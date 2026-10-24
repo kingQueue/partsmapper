@@ -2,7 +2,7 @@
 
 A browser-based hardware product mapper with an editable component tree, a parts checklist, and a pin-to-pin wiring view.
 
-[Open the hosted app](https://partmap-hardware-studio.dewylamp260.chatgpt.site/) (owner access required).
+Run it on your own computer at **http://127.0.0.1:4173**. No account, login, authentication service, or API key is required.
 
 ## Run locally
 
@@ -13,6 +13,8 @@ npm start
 ```
 
 Open http://127.0.0.1:4173 in your browser. Stop the server with Ctrl+C.
+
+The server listens only on this computer's loopback interface. It does not publish the app or make it available to other devices. Keep the terminal running while using the app. Use the same local address each time so the browser loads the same saved project.
 
 Alternatively, serve the `dist/` folder with a static HTTP server.
 
@@ -33,7 +35,11 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Reference file attachments and component specifications.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
-Projects and attachments are saved in browser local storage. This repository contains application code and example data; it does not synchronize your personal project data. Export a Project JSON backup to move a project between browsers, origins, or devices. Local and hosted instances have separate browser storage.
+Projects and attachments are saved in browser local storage. This repository contains application code and example data; it does not synchronize your personal project data. Export a Project JSON backup to move a project between browsers, origins, or devices.
+
+### Move a project from the previous hosted app
+
+On the old app, choose **Export project → Project JSON → Download JSON**. On the local app, choose **Import**, select that JSON, choose **Replace current project**, review the preview, and apply it. The two addresses have separate browser storage; opening localhost alone does not move a saved project.
 
 See [the user guide](dist/README.md) for import formats and limitations. The wiring cards are logical representations, not manufacturer-specific physical pinouts. Specifications and wiring must be supplied and verified by the user.
 
@@ -47,4 +53,4 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `preview.cjs`: local static server
 - `check.cjs`, `check-studio.cjs`: verification scripts
 
-Deploy the `dist/` folder to a static host. This repository is a source copy; pushing here does not automatically update the hosted Sites app.
+The app is intended for local use. Pushing source changes to this repository does not publish a website or change the previous hosted copy.
