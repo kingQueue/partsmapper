@@ -1,0 +1,11 @@
+# One part per line. Indented parts become children.
+ESP32 DevKit
+  OLED display
+  Micro servo
+Printed enclosure
+  4x M3 screws
+  Servo bracket
+
+# Structured format: name | quantity | category | parent | pins
+# Uncomment to add a board with explicit pins:
+# Sensor board | 1 | board | ESP32 DevKit | VCC;GND;SDA;SCL

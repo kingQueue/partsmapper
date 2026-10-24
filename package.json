@@ -1,0 +1,11 @@
+{
+  "name": "partsmapper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Visual hardware component trees, parts lists, and pin-to-pin wiring maps",
+  "scripts": {
+    "start": "node preview.cjs",
+    "test": "node check.cjs && node check-studio.cjs"
+  },
+  "engines": { "node": ">=18" }
+}

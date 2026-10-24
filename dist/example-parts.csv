@@ -1,0 +1,5 @@
+id,parent,name,category,model,quantity,notes,voltage,interface,firmware,ready
+main,,ESP32 DevKit,board,Your exact board revision,1,Main controller,,,Confirm framework,false
+servo,main,Head servo,motor,Your exact servo model,1,Verify safe travel,,,Define startup pose,false
+shell,,Enclosure,printed,Body revision A,1,Print and check fit,,,,false
+screws,shell,M3 screws,fastener,M3 x 8 mm,4,Check required length,,,,false
