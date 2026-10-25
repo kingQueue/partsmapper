@@ -30,6 +30,14 @@ Adding an electronic component with quantity 2 creates two independent map objec
 
 **Duplicate** creates an independent copy of the selected component's specifications, pin sections, pins, and reference files. It does not duplicate child components or electrical connections; attach and wire each new device explicitly.
 
+### Copy and paste identical parts
+
+Select a component and click **Copy part** above the map, or **Copy** in its details. Click **Paste** to create another independent instance. **New copies** is the number of additional components to create: to get four identical encoders, copy the first one, enter **3**, and paste. Repeat for your first wheel motor. Use **Attach copies to** to keep the original parent, choose another existing component, or place copies at the product root.
+
+Ctrl+C / Ctrl+V (Command+C / Command+V on Mac) work when a component is selected and you are not editing text or using a dialog. Text fields and selected page text retain normal copy/paste behavior. Keyboard paste uses the same New copies count and destination controls as the Paste button. If browser clipboard access is unavailable, Copy part and Paste still work inside the current page; copying via the buttons will explain that fallback.
+
+Copies include the saved specifications, nested pin sections, pin types/notes, and reference files. Each receives a distinct component ID and distinct physical pin IDs, so changing one does not edit the others. Children and electrical wires are not copied. A copied snapshot remains unchanged if its original is later edited or removed. The source parent is reused only if it still exists; otherwise copies go to the product root. Component clipboard text can also be pasted into another Partmap project or after a reload; the in-page clipboard itself resets on reload.
+
 Drag a component in the product map or drag a board's title in Wiring to reposition it. Wire endpoints update as it moves. Positions save automatically, survive reload, and travel with JSON exports. Product/electronics views share a tree layout; Wiring has its own saved layout. Moving components does not count as a firmware change in the AI brief.
 
 Use the visible minus/plus buttons, the 10%–300% zoom slider, or Ctrl/Command + mouse wheel to zoom. The fit button fits the visible map; **Expand map** provides a larger workspace. **Auto arrange** clears manual positions in the current layout and restores the generated arrangement.
