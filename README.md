@@ -33,6 +33,7 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - CSV, TXT, pasted-list, and JSON imports with a preview and append/replace options.
 - Physical pin sections with separate left/right headers, channel columns, power terminals, and explicit pin-to-pin connections.
 - A 16-channel PWM layout preset with 62 pins and independent repeated labels.
+- Header organizer with header creation, drag-and-drop pin moves/reordering, and preserved wiring.
 - Independent device duplication, saved drag positions, zoom from 10% to 300%, fit, and an expanded map.
 - Reference file attachments and component specifications.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.

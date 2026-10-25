@@ -15,6 +15,15 @@ run('const copy=duplicateDevice(driver);project.nodes.push(copy)');assert.notEqu
 const imported=run('parseParts("name,category,quantity,pins\\nServo,motor,2,PWM;V+;GND\\nScrews,fastener,4,","csv")');assert.equal(imported.nodes.length,3);assert.equal(imported.nodes.filter(n=>n.category==='motor').length,2);assert.equal(imported.nodes.find(n=>n.category==='fastener').quantity,4);
 assert.equal(run('parseParts("Board | 1 | board | | Left::GND;Right::GND").nodes[0].pins.length'),2);
 run('moveComponent(driver.id,"wiring",450,300)');const round=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(round.nodes.find(n=>n.name==='PWM driver').positions.wiring.x,450);assert.equal(round.nodes.find(n=>n.name==='PWM driver').pins.length,62);assert.ok(run('brief()').includes('Logic interface headers / Right header / GND'));
+run('const auxiliary=createHeaderSection(driver,"Auxiliary header","right");const movedPinId=leftGnd.id;const incomingSource=node("controller");saveWire(incomingSource,incomingSource.pins[0].id,driver.id,leftGnd.id);movePinToSection(driver,leftGnd.id,auxiliary.id)');
+assert.equal(run('leftGnd.id'),run('movedPinId'));assert.equal(run('leftGnd.section'),run('auxiliary.id'));assert.ok(run('driver.connections[0].local').includes('Auxiliary header'));assert.ok(run('incomingSource.connections.at(-1).remote').includes('Auxiliary header'));
+assert.equal(run('driver.connections[0].localPinId'),run('movedPinId'));assert.equal(run('incomingSource.connections.at(-1).remotePinId'),run('movedPinId'));
+run('removeWire(wireKey(incomingSource.id,incomingSource.pins[0].id,driver.id,leftGnd.id))');
+run('const leftVcc=driver.pins.find(p=>p.section==="logic-left"&&p.name==="VCC");const rightVcc=driver.pins.find(p=>p.section==="logic-right"&&p.name==="VCC");movePinToSection(driver,leftVcc.id,"logic-right",rightVcc.id)');
+assert.equal(run('driver.pins.filter(p=>p.section==="logic-right"&&p.name==="VCC").length'),2);assert.equal(run('driver.pins.indexOf(leftVcc)+1'),run('driver.pins.indexOf(rightVcc)'));assert.equal(run('movePinToSection(driver,leftVcc.id,"logic-right",leftVcc.id)'),false);
+run('movePinToSection(driver,leftVcc.id,"logic-left")');
+assert.throws(()=>run('movePinToSection(driver,leftGnd.id,"missing")'),/existing pin and a header/);assert.throws(()=>run('createHeaderSection(driver," ")'),/name/);
+const regrouped=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(regrouped.nodes.find(n=>n.id===run('driver.id')).pins.find(p=>p.id===run('movedPinId')).section,run('auxiliary.id'));
 assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pins[1].id=invalid.pins[0].id;validate({name:"bad",nodes:[{...invalid,connections:[]}]});}'),/Duplicate pin IDs/);
 assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pinSections[0].parent=invalid.pinSections[0].id;validatePhysicalNodes([invalid]);}'),/cycle/);
 run('project.baseline=structuredClone(project.nodes);moveComponent(driver.id,"wiring",900,700)');assert.equal(run('differences().modified.length'),0,'Visual layout must not produce firmware changes');
@@ -22,4 +31,4 @@ run('view="wiring";renderGraph()');assert.ok(el('#nodes').innerHTML.includes('ph
 run('removePhysicalPin(driver,leftGnd.id)');assert.equal(run('wiresFor(driver).length'),1);assert.ok(run('driver.pins.some(p=>p.id===rightGnd.id)'));
 run('removePinSection(driver,"logic")');assert.equal(run('driver.pins.length'),50);assert.equal(run('wiresFor(driver).length'),0);assert.ok(!run('driver.pinSections.some(s=>s.parent==="logic")'));
 assert.equal(run('parseParts("Board | 1 | board | | Right header::GND").nodes[0].pinSections.find(s=>s.name==="Right header").side'),'right');
-console.log('Passed: legacy stable-ID migration, 62-pin preset, repeated labels, separate header wires, pin rename identity, independent device copies, quantity expansion, grouped CSV/text imports, layout round trip, cyclic sections, duplicate IDs, firmware change filtering, grouped wire geometry, precise pin deletion.');
+console.log('Passed: legacy migration, grouped presets, repeated pin labels, header creation and pin moves, preserved incoming/outgoing wires and IDs, pin reordering, JSON round trips, independent device copies, quantity expansion, layout persistence, section validation, grouped wire geometry, and precise pin deletion.');

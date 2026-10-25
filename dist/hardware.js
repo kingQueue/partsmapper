@@ -84,6 +84,65 @@ saveWire=function(source,localId,targetId,remoteId){const target=node(targetId);
 function removeWire(key){for(const n of project.nodes)n.connections=n.connections.filter(c=>wireKey(n.id,c.localPinId,c.target,c.remotePinId)!==key);}
 function removePhysicalPin(n,id){n.pins=n.pins.filter(p=>p.id!==id);for(const source of project.nodes)source.connections=source.connections.filter(c=>!(source.id===n.id&&c.localPinId===id)&&!(c.target===n.id&&c.remotePinId===id));}
 function removePinSection(n,id){const ids=new Set([id]);let size;do{size=ids.size;n.pinSections.forEach(s=>{if(ids.has(s.parent))ids.add(s.id);});}while(size!==ids.size);for(const p of [...n.pins])if(ids.has(p.section))removePhysicalPin(n,p.id);n.pinSections=n.pinSections.filter(s=>!ids.has(s.id));normalizeNodePins(n);}
+function movePinToSection(n,pinId,sectionId,beforeId=null){
+  const pin=n.pins.find(p=>p.id===pinId),target=n.pinSections.find(s=>s.id===sectionId);
+  if(!pin||!target)throw Error('Choose an existing pin and a header on this board.');
+  if(beforeId===pinId)return false;
+  const before=beforeId?n.pins.find(p=>p.id===beforeId):null;
+  if(beforeId&&(!before||before.section!==sectionId))throw Error('The insertion point must be inside the destination header.');
+  const previous=n.pins.map(p=>p.id).join('|'),previousSection=pin.section;
+  const ordered=n.pins.filter(p=>p.id!==pinId);pin.section=sectionId;
+  let index=before?ordered.findIndex(p=>p.id===before.id):-1;
+  if(index<0){for(let i=ordered.length-1;i>=0;i--)if(ordered[i].section===sectionId){index=i+1;break;}}
+  if(index<0)index=ordered.length;ordered.splice(index,0,pin);n.pins=ordered;
+  syncConnectionLabels(project);
+  return previousSection!==sectionId||previous!==n.pins.map(p=>p.id).join('|');
+}
+function createHeaderSection(n,name,side='left',parent=null){
+  const section={id:uid(),name:String(name).trim(),side,parent:parent||null};
+  if(!['left','right','bottom','channel','group'].includes(side))throw Error('Choose a valid header layout.');
+  validatePhysicalNodes([{...n,pinSections:[...n.pinSections,section]}]);n.pinSections.push(section);return section;
+}
+const openPinSectionIds=new Map();
+function rememberOpenPinSections(n){const details=$$('#inspector [data-section-drop]');if(details.length)openPinSectionIds.set(n.id,new Set(details.filter(d=>d.open).map(d=>d.dataset.sectionDrop)));}
+function isPinSectionOpen(n,s){return openPinSectionIds.has(n.id)?openPinSectionIds.get(n.id).has(s.id):n.pinSections.length<5;}
+let activePinDrag=null,headerHoverTimer=null;
+function clearPinDrag(){clearTimeout(headerHoverTimer);headerHoverTimer=null;activePinDrag=null;$$('.pin-dragging,.pin-drop-hover,.pin-insert-before').forEach(el=>el.classList.remove('pin-dragging','pin-drop-hover','pin-insert-before'));}
+function bindPinDropZones(container,n,onMoved=()=>{}){
+  container.addEventListener('dragstart',e=>{
+    const row=e.target.closest('[data-pin-drag]');if(!row||!container.contains(row))return;
+    const pin=n.pins.find(p=>p.id===row.dataset.pinDrag);if(!pin)return;
+    activePinDrag={boardId:n.id,pinId:pin.id};row.classList.add('pin-dragging');e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('application/x-partmap-pin',JSON.stringify(activePinDrag));e.dataTransfer.setData('text/plain',pinLabel(n,pin));
+  });
+  container.addEventListener('dragover',e=>{
+    if(activePinDrag?.boardId!==n.id)return;const zone=e.target.closest('[data-section-drop]');if(!zone||!container.contains(zone))return;
+    e.preventDefault();e.dataTransfer.dropEffect='move';$$('.pin-drop-hover,.pin-insert-before').forEach(el=>el.classList.remove('pin-drop-hover','pin-insert-before'));zone.classList.add('pin-drop-hover');
+    const row=e.target.closest('[data-pin-drag]');if(row&&row.dataset.pinDrag!==activePinDrag.pinId)row.classList.add('pin-insert-before');
+    if(zone.tagName==='DETAILS'&&!zone.open&&!headerHoverTimer){headerHoverTimer=setTimeout(()=>{zone.open=true;headerHoverTimer=null;},350);}
+  });
+  container.addEventListener('dragleave',e=>{const zone=e.target.closest('[data-section-drop]');if(zone&&!zone.contains(e.relatedTarget)){zone.classList.remove('pin-drop-hover');clearTimeout(headerHoverTimer);headerHoverTimer=null;}});
+  container.addEventListener('drop',e=>{
+    if(activePinDrag?.boardId!==n.id)return;const zone=e.target.closest('[data-section-drop]');if(!zone||!container.contains(zone))return;
+    e.preventDefault();e.stopPropagation();const source={...activePinDrag},sectionId=zone.dataset.sectionDrop,row=e.target.closest('[data-pin-drag]'),beforeId=row?.dataset.pinDrag||null;
+    rememberOpenPinSections(n);if(!openPinSectionIds.has(n.id))openPinSectionIds.set(n.id,new Set());openPinSectionIds.get(n.id).add(sectionId);clearPinDrag();
+    try{if(movePinToSection(n,source.pinId,sectionId,beforeId)){changed(`Moved ${n.name} pin into ${sectionPath(n,sectionId)}`);renderInspector();onMoved();toast('Pin moved. Existing wire connections preserved.');}}catch(error){toast(error.message);}
+  });
+  container.addEventListener('dragend',clearPinDrag);
+}
+function openPinOrganizer(n){
+  const d=createModal(`<div class="dialog-heading"><div><div class="eyebrow">ARRANGE PHYSICAL PINS</div><h2>Organize headers · ${esc(n.name)}</h2></div><button class="icon-button" data-dismiss>×</button></div><p class="muted">Drag a pin into another header. Drop on a pin to insert before it, or on a header's empty space to append. Pin IDs and all wires stay attached.</p><form class="new-header-form"><label>Header name<input name="name" maxlength="100" required placeholder="e.g. Right logic header"></label><label>Layout<select name="side"><option value="left">Left header</option><option value="right">Right header</option><option value="bottom">Power terminal / bottom</option><option value="channel">Actuator channel</option><option value="group">Section group</option></select></label><label>Parent section<select name="parent"><option value="">Top level</option></select></label><button class="button primary">Create header</button></form><details class="pin-move-alternative"><summary>Move a pin using selectors</summary><div class="pin-move-fields"><label>Pin<select id="organizerPin"></select></label><label>Destination header<select id="organizerDestination"></select></label><button class="button" id="organizerMove">Move pin</button></div></details><div class="header-organizer-grid" id="headerOrganizerGrid"></div>`);
+  d.classList.add('header-organizer');const grid=d.querySelector('#headerOrganizerGrid'),form=d.querySelector('form'),source=d.querySelector('#organizerPin'),destination=d.querySelector('#organizerDestination');let featuredSection=null;
+  function refresh(focusSection=null){
+    if(focusSection)featuredSection=focusSection;const orderedSections=[...n.pinSections].sort((a,b)=>Number(b.id===featuredSection)-Number(a.id===featuredSection));
+    const previousSource=source.value,previousTarget=destination.value;source.innerHTML=pinOptions(n,previousSource);destination.innerHTML=chooseOptions(n.pinSections.map(s=>[s.id,sectionPath(n,s.id)]),focusSection||previousTarget);form.querySelector('[name=parent]').innerHTML='<option value="">Top level</option>'+chooseOptions(n.pinSections.map(s=>[s.id,sectionPath(n,s.id)]));
+    grid.innerHTML=orderedSections.map(s=>`<section class="header-drop-card" data-section-drop="${esc(s.id)}" aria-label="${esc(sectionPath(n,s.id))} drop zone"><h3>${esc(sectionPath(n,s.id))}<span>${n.pins.filter(p=>p.section===s.id).length} pins</span></h3><div class="header-pin-list">${n.pins.filter(p=>p.section===s.id).map(p=>`<div class="organizer-pin" draggable="true" data-pin-drag="${esc(p.id)}"><span class="pin-grip" aria-hidden="true">⠿</span><span><b>${esc(p.name)}</b><small>${esc(p.type)}${p.notes?' · '+esc(p.notes):''}</small></span></div>`).join('')}</div><p class="pin-drop-hint">Drop pins here</p></section>`).join('');
+    d.querySelector('#organizerMove').disabled=!n.pins.length;
+  }
+  form.onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(form));try{rememberOpenPinSections(n);const section=createHeaderSection(n,v.name,v.side,v.parent);if(!openPinSectionIds.has(n.id))openPinSectionIds.set(n.id,new Set());openPinSectionIds.get(n.id).add(section.id);changed(`Created header ${section.name} on ${n.name}`);renderInspector();refresh(section.id);form.querySelector('[name=name]').value='';toast('Header created. Drag pins into it.');}catch(error){toast(error.message);}};
+  d.querySelector('#organizerMove').onclick=()=>{try{rememberOpenPinSections(n);if(movePinToSection(n,source.value,destination.value)){if(!openPinSectionIds.has(n.id))openPinSectionIds.set(n.id,new Set());openPinSectionIds.get(n.id).add(destination.value);changed(`Moved pin into ${sectionPath(n,destination.value)}`);renderInspector();refresh();toast('Pin moved. Existing wires preserved.');}}catch(error){toast(error.message);}};
+  bindPinDropZones(grid,n,refresh);d.addEventListener('close',clearPinDrag);refresh();d.showModal();
+}
 function applyServoPreset(n){
   const sections=[{id:'logic',name:'Logic interface headers',side:'group',parent:null},{id:'logic-left',name:'Left header',side:'left',parent:'logic'},{id:'logic-right',name:'Right header',side:'right',parent:'logic'},{id:'actuators',name:'Actuator channel outputs',side:'group',parent:null},{id:'power-terminal',name:'Power screw terminal',side:'bottom',parent:null}];
   for(let i=0;i<16;i++)sections.push({id:`channel-${i}`,name:`Channel ${i}`,side:'channel',parent:'actuators'});
@@ -121,13 +180,14 @@ editPin=function(n,index=null,sectionId=null){
   const target=d.querySelector('[name=target]'),remote=d.querySelector('[name=remote]');target.onchange=()=>{const t=node(target.value);remote.innerHTML=t?pinOptions(t):'';remote.disabled=!t?.pins.length;};
   d.querySelector('form').onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));if(!v.name.trim())return;if(!old&&n.pins.length>=PIN_LIMIT){toast(`Use up to ${PIN_LIMIT} pins per device.`);return;}if(v.target&&!node(v.target)?.pins.some(p=>p.id===v.remote)){toast('Choose a target with defined pins.');return;}const p={id:old?.id||uid(),name:v.name.trim(),section:v.section,type:v.type,notes:v.notes};if(old)n.pins[index]=p;else n.pins.push(p);syncConnectionLabels(project);if(v.target)try{saveWire(n,p.id,v.target,v.remote);}catch(e){toast(e.message);}changed(`Updated ${n.name} / ${pinLabel(n,p)}`);renderInspector();d.close();};d.showModal();
 };
-function physicalPinRows(n,s){return n.pins.filter(p=>p.section===s.id).map(p=>`<div class="pin-item"><button class="pin-edit" data-pin-edit="${esc(p.id)}"><b>${esc(p.name)}</b><small>${esc(p.type)}${p.notes?' · '+esc(p.notes):''}</small></button><button data-pin-connect="${esc(p.id)}" title="Connect ${esc(pinLabel(n,p))}">↗</button><button data-pin-delete="${esc(p.id)}" aria-label="Delete ${esc(pinLabel(n,p))}">×</button></div>`).join('');}
+function physicalPinRows(n,s){return n.pins.filter(p=>p.section===s.id).map(p=>`<div class="pin-item" draggable="true" data-pin-drag="${esc(p.id)}"><span class="pin-grip" title="Drag this pin to another header" aria-hidden="true">⠿</span><button class="pin-edit" data-pin-edit="${esc(p.id)}"><b>${esc(p.name)}</b><small>${esc(p.type)}${p.notes?' · '+esc(p.notes):''}</small></button><button data-pin-connect="${esc(p.id)}" title="Connect ${esc(pinLabel(n,p))}">↗</button><button data-pin-delete="${esc(p.id)}" aria-label="Delete ${esc(pinLabel(n,p))}">×</button></div>`).join('');}
 renderInspector=function(){
   originalInspector();const n=node(selected);if(!n)return;
   const duplicate=document.createElement('button');duplicate.className='button';duplicate.textContent='Duplicate';duplicate.id='duplicateDevice';$('.inspector-bottom').prepend(duplicate);duplicate.onclick=()=>{if(project.nodes.length>=300){toast('Maximum 300 components.');return;}const copy=duplicateDevice(n);project.nodes.push(copy);selected=copy.id;changed(`Duplicated ${n.name} as an independent component`);renderInspector();toast('Independent copy created. Pin definitions copied; wires remain unconnected.');};
   const qty=$('[data-field=quantity]');if(categories[n.category][2]){qty.value=n.quantity;qty.onchange=()=>{const count=Number(qty.value);if(!Number.isInteger(count)||count<1||project.nodes.length+count-1>300){qty.value=n.quantity;toast('Enter a valid quantity within the 300 component limit.');return;}if(count>1){n.quantity=1;for(let i=1;i<count;i++)project.nodes.push(duplicateDevice(n));changed(`Created ${count} independent instances of ${n.name}`);renderInspector();}else{n.quantity=1;changed(`Updated ${n.name} quantity`);}};}
   if(!categories[n.category][2])return;
-  const section=document.createElement('section');section.className='pin-editor';section.innerHTML=`<div class="section-label">PHYSICAL PIN SECTIONS <button id="addSection">＋ Section</button></div><div class="pin-tools"><button id="addPin" class="button">＋ Pin</button><button id="servoPreset" class="button">16-channel PWM preset</button></div>${n.pinSections.map(s=>`<details class="pin-section" ${n.pinSections.length<5?'open':''}><summary>${esc(sectionPath(n,s.id))}<span>${n.pins.filter(p=>p.section===s.id).length}</span></summary><div class="section-actions"><button data-section-edit="${esc(s.id)}">Edit section</button><button data-section-add-pin="${esc(s.id)}">＋ Pin here</button></div>${physicalPinRows(n,s)}</details>`).join('')}`;
+  const section=document.createElement('section');section.className='pin-editor';section.innerHTML=`<div class="section-label">PHYSICAL PIN SECTIONS <button id="addSection">＋ Section</button></div><div class="pin-tools"><button id="addPin" class="button">＋ Pin</button><button id="servoPreset" class="button">16-channel PWM preset</button></div><button id="organizeHeaders" class="button organize-headers-button">Organize headers · drag pins</button><p class="pin-editor-hint">Drag ⠿ pins between section headers, or open the organizer for more space.</p>${n.pinSections.map(s=>`<details class="pin-section" data-section-drop="${esc(s.id)}" ${isPinSectionOpen(n,s)?'open':''}><summary>${esc(sectionPath(n,s.id))}<span>${n.pins.filter(p=>p.section===s.id).length}</span></summary><div class="section-actions"><button data-section-edit="${esc(s.id)}">Edit section</button><button data-section-add-pin="${esc(s.id)}">＋ Pin here</button></div>${physicalPinRows(n,s)}<p class="pin-drop-hint">Drop pins here</p></details>`).join('')}`;
+  bindPinDropZones(section,n);section.addEventListener('toggle',()=>rememberOpenPinSections(n),true);section.querySelector('#organizeHeaders').onclick=()=>{rememberOpenPinSections(n);openPinOrganizer(n);};
   const heading=$('#connectionAdd').closest('.section-label');heading.before(section);$('#addSection').onclick=()=>editSection(n);$('#addPin').onclick=()=>editPin(n);$('#servoPreset').onclick=()=>{try{applyServoPreset(n);changed(`Added left/right headers, 16 actuator channels, and power terminal to ${n.name}`);renderInspector();toast('62 physical pins added across both headers, channels 0–15, and the power terminal.');}catch(e){toast(e.message);}};
   $$('[data-section-edit]').forEach(b=>b.onclick=()=>editSection(n,n.pinSections.find(s=>s.id===b.dataset.sectionEdit)));$$('[data-section-add-pin]').forEach(b=>b.onclick=()=>editPin(n,null,b.dataset.sectionAddPin));$$('[data-pin-edit]').forEach(b=>b.onclick=()=>editPin(n,n.pins.findIndex(p=>p.id===b.dataset.pinEdit)));$$('[data-pin-connect]').forEach(b=>b.onclick=()=>openConnection(n,b.dataset.pinConnect));$$('[data-pin-delete]').forEach(b=>b.onclick=()=>{const id=b.dataset.pinDelete,p=n.pins.find(p=>p.id===id),count=wiresFor(n).filter(w=>w.source.id===n.id?w.connection.localPinId===id:w.connection.remotePinId===id).length;if(count&&!confirm(`Remove ${pinLabel(n,p)} and its ${count} wire(s)?`))return;removePhysicalPin(n,id);changed(`Removed pin ${n.name} / ${p.name}`);renderInspector();});
   let sibling=heading.nextElementSibling;while(sibling&&(sibling.classList.contains('connection')||sibling.classList.contains('muted'))){const next=sibling.nextElementSibling;sibling.remove();sibling=next;}
