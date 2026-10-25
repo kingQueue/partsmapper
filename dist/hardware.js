@@ -1,0 +1,215 @@
+// Physical pins are addressed by (component ID, pin ID), never by their label.
+const PIN_LIMIT = 512;
+const SECTION_LIMIT = 64;
+const DEFAULT_SECTION = 'main';
+function sectionPath(n, id) {
+  const names = [], seen = new Set();
+  let s = n.pinSections.find(s => s.id === id);
+  while (s && !seen.has(s.id)) { seen.add(s.id); names.unshift(s.name); s = n.pinSections.find(x => x.id === s.parent); }
+  return names.join(' / ');
+}
+function pinLabel(n, p) {
+  const path = sectionPath(n, p.section);
+  return (path && path !== 'Main pins' ? path + ' / ' : '') + p.name;
+}
+function pinOptions(n, value) {
+  return n.pins.map(p => {
+    const duplicate = n.pins.filter(x => x.name === p.name && x.section === p.section).length > 1;
+    return `<option value="${esc(p.id)}" ${p.id === value ? 'selected' : ''}>${esc(pinLabel(n,p))}${duplicate ? ` [${esc(p.id)}]` : ''}</option>`;
+  }).join('');
+}
+pinList = function(value) {
+  return String(value || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).map(text => {
+    const parts = text.split('::');
+    return {id:uid(), name:parts.pop().trim(), sectionName:parts.join(' / ').trim() || 'Main pins', type:'unspecified', notes:''};
+  });
+};
+function normalizeNodePins(n) {
+  if (!Array.isArray(n.pins)) n.pins = pinList(n.pins);
+  if (!Array.isArray(n.pinSections)) n.pinSections = [];
+  if (!n.pinSections.length) n.pinSections.push({id:DEFAULT_SECTION, name:'Main pins', side:'left', parent:null});
+  for (let i=0; i<n.pins.length; i++) {
+    const p = n.pins[i];
+    if (!p || typeof p.name !== 'string' || !p.name.trim()) throw Error(`Invalid pin on ${n.name}.`);
+    if (!p.id) p.id = `pin-${i+1}`;
+    if (p.sectionName) {
+      let section = n.pinSections.find(s=>s.name===p.sectionName);
+      if (!section) { section={id:`section-${n.pinSections.length+1}`,name:p.sectionName,side:/right/i.test(p.sectionName)?'right':/channel/i.test(p.sectionName)?'channel':/terminal/i.test(p.sectionName)?'bottom':'left',parent:null}; n.pinSections.push(section); }
+      p.section=section.id; delete p.sectionName;
+    }
+    if (!p.section) p.section=n.pinSections[0].id;
+    p.type=p.type||'unspecified'; p.notes=p.notes||'';
+  }
+  return n;
+}
+function findPhysicalPin(n, id, label) {
+  if (id) { const p=n.pins.find(p=>p.id===id); if (!p) throw Error(`Missing pin ${id} on ${n.name}.`); return p; }
+  const matches=n.pins.filter(p=>p.name===label || pinLabel(n,p)===label);
+  if (matches.length>1) throw Error(`Ambiguous legacy pin "${label}" on ${n.name}. Assign an explicit pin ID.`);
+  if (matches.length) return matches[0];
+  const p={id:`pin-legacy-${n.pins.length+1}`,name:label,section:n.pinSections[0].id,type:'unspecified',notes:''}; n.pins.push(p); return p;
+}
+function syncConnectionLabels(p) {
+  for (const n of p.nodes) for (const c of n.connections) {
+    const target=p.nodes.find(x=>x.id===c.target);
+    const local=findPhysicalPin(n,c.localPinId,c.local), remote=findPhysicalPin(target,c.remotePinId,c.remote);
+    c.localPinId=local.id; c.remotePinId=remote.id; c.local=pinLabel(n,local); c.remote=pinLabel(target,remote);
+  }
+}
+migratePins = function(p) { p.nodes.forEach(normalizeNodePins); syncConnectionLabels(p); return p; };
+function validatePhysicalNodes(nodes) {
+  for (const n of nodes) {
+    if (n.pins.length>PIN_LIMIT || n.pinSections.length>SECTION_LIMIT) throw Error(`Use at most ${PIN_LIMIT} pins and ${SECTION_LIMIT} sections per component.`);
+    if (new Set(n.pins.map(p=>p.id)).size!==n.pins.length) throw Error(`Duplicate pin IDs on ${n.name}.`);
+    if (new Set(n.pinSections.map(s=>s.id)).size!==n.pinSections.length) throw Error(`Duplicate section IDs on ${n.name}.`);
+    for (const s of n.pinSections) {
+      if (typeof s.id!=='string'||!s.id||typeof s.name!=='string'||!s.name.trim()||s.name.length>100) throw Error('Each section needs a unique ID and a name up to 100 characters.');
+      const seen=new Set(); let cur=s;
+      while(cur) { if(seen.has(cur.id))throw Error('Pin section hierarchy contains a cycle.');seen.add(cur.id);if(cur.parent&&!n.pinSections.some(x=>x.id===cur.parent))throw Error('Missing parent pin section.');cur=n.pinSections.find(x=>x.id===cur.parent); }
+    }
+    for (const p of n.pins) if(typeof p.id!=='string'||!p.id||p.name.length>80||!n.pinSections.some(s=>s.id===p.section))throw Error(`Invalid pin or missing section on ${n.name}.`);
+    for(const pos of Object.values(n.positions||{})) if(!pos||!Number.isFinite(pos.x)||!Number.isFinite(pos.y)||pos.x<0||pos.y<0||pos.x>100000||pos.y>100000)throw Error('Invalid saved component position.');
+  }
+}
+validate = function(p) {
+  const result=originalValidate(structuredClone(p));
+  migratePins(result); validatePhysicalNodes(result.nodes);
+  if(result.baseline){const baseline=originalValidate({name:'Baseline',nodes:result.baseline});migratePins(baseline);validatePhysicalNodes(baseline.nodes);result.baseline=baseline.nodes;}
+  result.schemaVersion='2.0';return result;
+};
+migratePins(project); if(project.baseline)migratePins({nodes:project.baseline}); project.schemaVersion='2.0';
+function wireKey(sourceId, localId, targetId, remoteId) { return [JSON.stringify([sourceId,localId]),JSON.stringify([targetId,remoteId])].sort().join('|'); }
+wireRecords=function(){const seen=new Set(),out=[];for(const n of project.nodes)for(const [index,c] of n.connections.entries()){const key=wireKey(n.id,c.localPinId,c.target,c.remotePinId);if(!seen.has(key)){seen.add(key);out.push({source:n,target:node(c.target),connection:c,index,key});}}return out;};
+saveWire=function(source,localId,targetId,remoteId){const target=node(targetId);if(!target||!source||source.id===target.id)throw Error('Choose a different component.');const local=source.pins.find(p=>p.id===localId),remote=target.pins.find(p=>p.id===remoteId);if(!local||!remote)throw Error('Choose a defined pin at both ends.');const key=wireKey(source.id,localId,targetId,remoteId);if(wireRecords().some(w=>w.key===key))throw Error('These physical pins are already connected.');source.connections.push({localPinId:localId,remotePinId:remoteId,target:targetId,local:pinLabel(source,local),remote:pinLabel(target,remote)});};
+function removeWire(key){for(const n of project.nodes)n.connections=n.connections.filter(c=>wireKey(n.id,c.localPinId,c.target,c.remotePinId)!==key);}
+function removePhysicalPin(n,id){n.pins=n.pins.filter(p=>p.id!==id);for(const source of project.nodes)source.connections=source.connections.filter(c=>!(source.id===n.id&&c.localPinId===id)&&!(c.target===n.id&&c.remotePinId===id));}
+function removePinSection(n,id){const ids=new Set([id]);let size;do{size=ids.size;n.pinSections.forEach(s=>{if(ids.has(s.parent))ids.add(s.id);});}while(size!==ids.size);for(const p of [...n.pins])if(ids.has(p.section))removePhysicalPin(n,p.id);n.pinSections=n.pinSections.filter(s=>!ids.has(s.id));normalizeNodePins(n);}
+function applyServoPreset(n){
+  const sections=[{id:'logic',name:'Logic interface headers',side:'group',parent:null},{id:'logic-left',name:'Left header',side:'left',parent:'logic'},{id:'logic-right',name:'Right header',side:'right',parent:'logic'},{id:'actuators',name:'Actuator channel outputs',side:'group',parent:null},{id:'power-terminal',name:'Power screw terminal',side:'bottom',parent:null}];
+  for(let i=0;i<16;i++)sections.push({id:`channel-${i}`,name:`Channel ${i}`,side:'channel',parent:'actuators'});
+  const pins=[];
+  for(const section of ['logic-left','logic-right'])for(const name of ['GND','VCC','SDA','SCL','OE','V+'])pins.push({section,name});
+  for(let i=0;i<16;i++)for(const name of ['PWM','V+','GND'])pins.push({section:`channel-${i}`,name});
+  for(const name of ['V+','GND'])pins.push({section:'power-terminal',name});
+  const candidate=structuredClone(n);normalizeNodePins(candidate);
+  for(const s of sections)if(!candidate.pinSections.some(x=>x.id===s.id))candidate.pinSections.push(s);
+  for(const p of pins)if(!candidate.pins.some(x=>x.section===p.section&&x.name===p.name))candidate.pins.push({...p,id:uid(),type:p.name==='GND'?'ground':['V+','VCC'].includes(p.name)?'power':p.name==='PWM'?'PWM':['SDA','SCL'].includes(p.name)?'I2C':'digital',notes:''});
+  validatePhysicalNodes([candidate]);n.pinSections=candidate.pinSections;n.pins=candidate.pins;
+}
+function duplicateDevice(n, name) {
+  const copy=structuredClone(n);copy.id=uid();copy.name=name||uniqueDeviceName(n.name);copy.connections=[];copy.pins.forEach(p=>p.id=uid());
+  if(copy.positions)for(const [mode,pos] of Object.entries(copy.positions)){pos.x+=mode==='wiring'?boardGeometry(copy).width+90:260;}
+  if(categories[copy.category][2])copy.quantity=1;return copy;
+}
+function uniqueDeviceName(base){base=base.replace(/\s+\(\d+\)$/,'');let i=2,name=`${base} (${i})`;while(project.nodes.some(n=>n.name===name))name=`${base} (${++i})`;return name;}
+function addDeviceCopies(base,count){if(!Number.isInteger(count)||count<1||project.nodes.length+count>300)throw Error('Use a whole quantity that keeps the project within 300 components.');if(project.nodes.some(n=>n.name===base.name))base.name=uniqueDeviceName(base.name);base.quantity=1;const copies=[base];for(let i=1;i<count;i++){let suffix=i+1,name=`${base.name} (${suffix})`;while(project.nodes.some(n=>n.name===name)||copies.some(n=>n.name===name))name=`${base.name} (${++suffix})`;copies.push(duplicateDevice(base,name));}project.nodes.push(...copies);return copies;}
+const parsePartsBeforePhysicalPins=parseParts;
+parseParts=function(text,format,name){const p=parsePartsBeforePhysicalPins(text,format,name),original=[...p.nodes];const total=original.reduce((sum,n)=>sum+(categories[n.category][2]?n.quantity:1),0);if(total>300)throw Error('Expanded device quantities exceed the 300 component limit.');for(const n of original)if(categories[n.category][2]&&n.quantity>1){const count=n.quantity;n.quantity=1;for(let i=1;i<count;i++)p.nodes.push(duplicateDevice(n,`${n.name} (${i+1})`));}return validate(p);};
+openConnection=function(n,initialPin=''){
+  const others=project.nodes.filter(x=>x.id!==n.id&&categories[x.category][2]);if(!n.pins.length||!others.length){toast('Define pins on this component and another electronic component first.');return;}
+  const d=createModal(`<form><div class="dialog-heading"><h2>Connect physical pins</h2><button type="button" class="icon-button" data-dismiss>×</button></div><label>Source pin<select name="local">${pinOptions(n,initialPin)}</select></label><label>Connected component<select name="target">${chooseOptions(others.map(x=>[x.id,`${x.name} · ${x.id.slice(0,6)}`]))}</select></label><label>Connected pin<select name="remote" required></select></label><p class="muted" id="wireHelp">Section names identify repeated pin labels.</p><div class="dialog-actions"><button class="button primary" id="saveWireBtn">Connect pins</button></div></form>`);
+  const target=d.querySelector('[name=target]'),remote=d.querySelector('[name=remote]');function refresh(){const t=node(target.value);remote.innerHTML=pinOptions(t);d.querySelector('#saveWireBtn').disabled=!t.pins.length;d.querySelector('#wireHelp').textContent=t.pins.length?'Left and right headers, channels, and repeated labels remain separate physical pins.':'Add pins to this target component first.';}target.onchange=refresh;refresh();d.querySelector('form').onsubmit=e=>{e.preventDefault();try{const v=Object.fromEntries(new FormData(e.target));saveWire(n,v.local,v.target,v.remote);changed(`Connected physical pins on ${n.name}`);renderInspector();d.close();}catch(e){toast(e.message);}};d.showModal();
+};
+function editSection(n,old=null){
+  const d=createModal(`<form><div class="dialog-heading"><h2>${old?'Edit':'Add'} pin section</h2><button type="button" class="icon-button" data-dismiss>×</button></div><label>Section name<input name="name" maxlength="100" required value="${esc(old?.name||'')}" placeholder="e.g. Left header"></label><label>Parent section<select name="parent"><option value="">Top level</option>${chooseOptions(n.pinSections.filter(s=>s.id!==old?.id).map(s=>[s.id,sectionPath(n,s.id)]),old?.parent)}</select></label><label>Position / layout<select name="side">${chooseOptions([['left','Left header'],['right','Right header'],['channel','Actuator channel column'],['bottom','Bottom / power terminal'],['group','Section group']],old?.side||'left')}</select></label><div class="dialog-actions"><button class="button primary">Save section</button></div></form>`);
+  if(old){const remove=document.createElement('button');remove.type='button';remove.className='button danger';remove.textContent='Delete section';d.querySelector('.dialog-actions').prepend(remove);remove.onclick=()=>{if(!confirm(`Delete ${sectionPath(n,old.id)}, its child sections, pins, and attached wires?`))return;removePinSection(n,old.id);changed(`Removed pin section ${old.name} from ${n.name}`);renderInspector();d.close();};}
+  d.querySelector('form').onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),candidate=structuredClone(n),s={id:old?.id||uid(),name:v.name.trim(),parent:v.parent||null,side:v.side};if(old)candidate.pinSections=candidate.pinSections.map(x=>x.id===old.id?s:x);else candidate.pinSections.push(s);try{validatePhysicalNodes([candidate]);n.pinSections=candidate.pinSections;syncConnectionLabels(project);changed(`Updated pin sections on ${n.name}`);renderInspector();d.close();}catch(e){toast(e.message);}};d.showModal();
+}
+editPin=function(n,index=null,sectionId=null){
+  const old=index==null?null:n.pins[index],others=project.nodes.filter(x=>x.id!==n.id&&categories[x.category][2]);
+  const d=createModal(`<form><div class="dialog-heading"><h2>${old?'Edit':'Add'} physical pin</h2><button type="button" class="icon-button" data-dismiss>×</button></div><label>Section<select name="section">${chooseOptions(n.pinSections.map(s=>[s.id,sectionPath(n,s.id)]),old?.section||sectionId)}</select></label><label>Pin label<input name="name" maxlength="80" required value="${esc(old?.name||'')}" placeholder="GND, V+, PWM, GPIO21…"></label><label>Pin type<select name="type">${chooseOptions(['unspecified','digital','analog','power','ground','I2C','SPI','UART','PWM'].map(t=>[t,t]),old?.type)}</select></label><label>Notes<input name="notes" value="${esc(old?.notes||'')}"></label><label>Connect to (optional)<select name="target"><option value="">Leave existing wires unchanged</option>${chooseOptions(others.map(x=>[x.id,`${x.name} · ${x.id.slice(0,6)}`]))}</select></label><label>Target pin<select name="remote" disabled></select></label><p class="muted">Repeated labels are allowed. Each pin keeps a distinct ID, even when moved or renamed.</p><div class="dialog-actions"><button class="button primary">Save pin</button></div></form>`);
+  const target=d.querySelector('[name=target]'),remote=d.querySelector('[name=remote]');target.onchange=()=>{const t=node(target.value);remote.innerHTML=t?pinOptions(t):'';remote.disabled=!t?.pins.length;};
+  d.querySelector('form').onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));if(!v.name.trim())return;if(!old&&n.pins.length>=PIN_LIMIT){toast(`Use up to ${PIN_LIMIT} pins per device.`);return;}if(v.target&&!node(v.target)?.pins.some(p=>p.id===v.remote)){toast('Choose a target with defined pins.');return;}const p={id:old?.id||uid(),name:v.name.trim(),section:v.section,type:v.type,notes:v.notes};if(old)n.pins[index]=p;else n.pins.push(p);syncConnectionLabels(project);if(v.target)try{saveWire(n,p.id,v.target,v.remote);}catch(e){toast(e.message);}changed(`Updated ${n.name} / ${pinLabel(n,p)}`);renderInspector();d.close();};d.showModal();
+};
+function physicalPinRows(n,s){return n.pins.filter(p=>p.section===s.id).map(p=>`<div class="pin-item"><button class="pin-edit" data-pin-edit="${esc(p.id)}"><b>${esc(p.name)}</b><small>${esc(p.type)}${p.notes?' · '+esc(p.notes):''}</small></button><button data-pin-connect="${esc(p.id)}" title="Connect ${esc(pinLabel(n,p))}">↗</button><button data-pin-delete="${esc(p.id)}" aria-label="Delete ${esc(pinLabel(n,p))}">×</button></div>`).join('');}
+renderInspector=function(){
+  originalInspector();const n=node(selected);if(!n)return;
+  const duplicate=document.createElement('button');duplicate.className='button';duplicate.textContent='Duplicate';duplicate.id='duplicateDevice';$('.inspector-bottom').prepend(duplicate);duplicate.onclick=()=>{if(project.nodes.length>=300){toast('Maximum 300 components.');return;}const copy=duplicateDevice(n);project.nodes.push(copy);selected=copy.id;changed(`Duplicated ${n.name} as an independent component`);renderInspector();toast('Independent copy created. Pin definitions copied; wires remain unconnected.');};
+  const qty=$('[data-field=quantity]');if(categories[n.category][2]){qty.value=n.quantity;qty.onchange=()=>{const count=Number(qty.value);if(!Number.isInteger(count)||count<1||project.nodes.length+count-1>300){qty.value=n.quantity;toast('Enter a valid quantity within the 300 component limit.');return;}if(count>1){n.quantity=1;for(let i=1;i<count;i++)project.nodes.push(duplicateDevice(n));changed(`Created ${count} independent instances of ${n.name}`);renderInspector();}else{n.quantity=1;changed(`Updated ${n.name} quantity`);}};}
+  if(!categories[n.category][2])return;
+  const section=document.createElement('section');section.className='pin-editor';section.innerHTML=`<div class="section-label">PHYSICAL PIN SECTIONS <button id="addSection">＋ Section</button></div><div class="pin-tools"><button id="addPin" class="button">＋ Pin</button><button id="servoPreset" class="button">16-channel PWM preset</button></div>${n.pinSections.map(s=>`<details class="pin-section" ${n.pinSections.length<5?'open':''}><summary>${esc(sectionPath(n,s.id))}<span>${n.pins.filter(p=>p.section===s.id).length}</span></summary><div class="section-actions"><button data-section-edit="${esc(s.id)}">Edit section</button><button data-section-add-pin="${esc(s.id)}">＋ Pin here</button></div>${physicalPinRows(n,s)}</details>`).join('')}`;
+  const heading=$('#connectionAdd').closest('.section-label');heading.before(section);$('#addSection').onclick=()=>editSection(n);$('#addPin').onclick=()=>editPin(n);$('#servoPreset').onclick=()=>{try{applyServoPreset(n);changed(`Added left/right headers, 16 actuator channels, and power terminal to ${n.name}`);renderInspector();toast('62 physical pins added across both headers, channels 0–15, and the power terminal.');}catch(e){toast(e.message);}};
+  $$('[data-section-edit]').forEach(b=>b.onclick=()=>editSection(n,n.pinSections.find(s=>s.id===b.dataset.sectionEdit)));$$('[data-section-add-pin]').forEach(b=>b.onclick=()=>editPin(n,null,b.dataset.sectionAddPin));$$('[data-pin-edit]').forEach(b=>b.onclick=()=>editPin(n,n.pins.findIndex(p=>p.id===b.dataset.pinEdit)));$$('[data-pin-connect]').forEach(b=>b.onclick=()=>openConnection(n,b.dataset.pinConnect));$$('[data-pin-delete]').forEach(b=>b.onclick=()=>{const id=b.dataset.pinDelete,p=n.pins.find(p=>p.id===id),count=wiresFor(n).filter(w=>w.source.id===n.id?w.connection.localPinId===id:w.connection.remotePinId===id).length;if(count&&!confirm(`Remove ${pinLabel(n,p)} and its ${count} wire(s)?`))return;removePhysicalPin(n,id);changed(`Removed pin ${n.name} / ${p.name}`);renderInspector();});
+  let sibling=heading.nextElementSibling;while(sibling&&(sibling.classList.contains('connection')||sibling.classList.contains('muted'))){const next=sibling.nextElementSibling;sibling.remove();sibling=next;}
+  heading.insertAdjacentHTML('afterend',wiresFor(n).map(w=>{const out=w.source.id===n.id;return `<div class="connection"><b>${esc(out?w.connection.local:w.connection.remote)}</b><span>↔ ${esc(out?w.target.name:w.source.name)} / ${esc(out?w.connection.remote:w.connection.local)}</span><button data-physical-wire="${esc(w.key)}" aria-label="Remove connection">×</button></div>`;}).join('')||'<p class="muted">No wires recorded yet.</p>');$$('[data-physical-wire]').forEach(b=>b.onclick=()=>{removeWire(b.dataset.physicalWire);changed('Removed physical pin connection');renderInspector();});
+};
+// Layout exposes the exact terminal center used to draw each wire.
+function boardGeometry(n) {
+  const populated=n.pinSections.filter(s=>n.pins.some(p=>p.section===s.id));
+  const channels=populated.filter(s=>s.side==='channel');
+  const wide=channels.length>4 || populated.some(s=>s.side==='right');
+  const width=wide?600:280, blocks=[], pins=new Map();let y=72;
+  const headers=populated.filter(s=>!['channel','bottom'].includes(s.side));
+  const left=headers.filter(s=>s.side!=='right'),right=headers.filter(s=>s.side==='right');
+  function addBlock(s,x,top,w,kind='header'){
+    const list=n.pins.filter(p=>p.section===s.id);const h=26+list.length*24;
+    blocks.push({s,x,y:top,w,h,kind,list});
+    list.forEach((p,i)=>pins.set(p.id,{x:x+(s.side==='right'?w+1:3),y:top+41+i*24,side:s.side==='right'?'right':'left'}));
+    return h;
+  }
+  if(wide){let ly=y,ry=y;for(const s of left)ly+=addBlock(s,12,ly,(width-36)/2)+12;for(const s of right)ry+=addBlock(s,width/2+6,ry,(width-36)/2)+12;y=Math.max(ly,ry);}
+  else for(const s of left)y+=addBlock(s,12,y,width-24)+12;
+  if(channels.length){
+    const channelTitle=channels[0].parent&&channels.every(s=>s.parent===channels[0].parent)?sectionPath(n,channels[0].parent):'Actuator channel outputs';
+    blocks.push({kind:'group-label',title:channelTitle,x:12,y,w:width-24,h:25});y+=25;
+    const perRow=Math.min(16,channels.length),columnWidth=(width-24)/perRow;
+    for(let offset=0;offset<channels.length;offset+=perRow){let rowHeight=0;channels.slice(offset,offset+perRow).forEach((s,j)=>{const list=n.pins.filter(p=>p.section===s.id),h=26+list.length*24;blocks.push({s,x:12+j*columnWidth,y,w:columnWidth-3,h,kind:'channel',list});list.forEach((p,i)=>pins.set(p.id,{x:12+j*columnWidth+columnWidth/2+.5,y:y+41+i*24,escapeX:14+(j+1)*columnWidth,side:'bottom'}));rowHeight=Math.max(rowHeight,h);});y+=rowHeight+12;}
+  }
+  for(const s of populated.filter(s=>s.side==='bottom'))y+=addBlock(s,12,y,width-24,'terminal')+12;
+  if(!n.pins.length)y+=55;
+  return {width,height:y+15,blocks,pins};
+}
+function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>b.kind==='group-label'?`<div class="board-group-label" style="left:${b.x}px;top:${b.y}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map(p=>`<button class="physical-terminal" data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}<span class="board-hole"></span></article>`;}
+let latestGeometry={positions:new Map(),sizes:new Map(),width:700,height:350};
+function mapMode(){return view==='wiring'?'wiring':'tree';}
+function routePhysicalWire(a,b,ap,bp,ag,bg,index){
+  const ax=a.x+ap.x,ay=a.y+ap.y,bx=b.x+bp.x,by=b.y+bp.y,gap=18+(index%6)*8;
+  const escape=(p,pos,g)=>p.side==='bottom'?pos.x+p.escapeX:p.side==='right'?pos.x+g.width+gap:Math.max(4,pos.x-gap);
+  const ex=escape(ap,a,ag),tx=escape(bp,b,bg),bottom=ap.side==='bottom'||bp.side==='bottom';
+  const lane=bottom?Math.max(a.y+ag.height,b.y+bg.height)+gap:Math.max(5,Math.min(a.y,b.y)-gap);
+  return `M ${ax} ${ay} L ${ex} ${ay} L ${ex} ${lane} L ${tx} ${lane} L ${tx} ${by} L ${bx} ${by}`;
+}
+function treePositions(list){
+  const included=new Set(list.map(n=>n.id)),children=new Map([['__product__',[]]]);for(const n of list){let parent=node(n.parent);while(parent&&!included.has(parent.id))parent=node(parent.parent);const key=parent?.id||'__product__';if(!children.has(key))children.set(key,[]);children.get(key).push(n);}
+  let leaf=0;const positions=new Map();function place(id,depth){const kids=children.get(id)||[],ys=kids.map(n=>place(n.id,depth+1)),y=ys.length?(ys[0]+ys.at(-1))/2:leaf++*115;if(id!=='__product__')positions.set(id,{x:30+depth*250,y:25+y});return y;}place('__product__',-1);return {positions,children};
+}
+renderGraph=function(){
+  const wiring=view==='wiring',list=project.nodes.filter(n=>enabled.has(n.category)&&(view==='full'||categories[n.category][2]));let positions=new Map(),sizes=new Map(),edges='';const geo=new Map();
+  if(wiring){list.forEach(n=>geo.set(n.id,boardGeometry(n)));const maxWidth=Math.max(280,...[...geo.values()].map(g=>g.width));let y=30;for(let i=0;i<list.length;i+=2){const pair=list.slice(i,i+2);pair.forEach((n,j)=>{const g=geo.get(n.id);positions.set(n.id,{x:30+j*(maxWidth+180),y});sizes.set(n.id,{width:g.width,height:g.height});});y+=Math.max(...pair.map(n=>geo.get(n.id).height))+75;}}
+  else{positions=treePositions(list).positions;list.forEach(n=>sizes.set(n.id,{width:210,height:90}));}
+  for(const n of list){const saved=n.positions?.[mapMode()];if(saved)positions.set(n.id,{...saved});}
+  if(wiring){const colors=['#74b6d3','#d0ab65','#bfa0dd','#8acba6','#d8978c'];edges=wireRecords().filter(w=>positions.has(w.source.id)&&positions.has(w.target?.id)).map((w,i)=>{const a=positions.get(w.source.id),b=positions.get(w.target.id),ag=geo.get(w.source.id),bg=geo.get(w.target.id),ap=ag.pins.get(w.connection.localPinId),bp=bg.pins.get(w.connection.remotePinId);if(!ap||!bp)return '';const d=routePhysicalWire(a,b,ap,bp,ag,bg,i),color=colors[i%colors.length];return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round"><title>${esc(w.source.name)} / ${esc(w.connection.local)} ↔ ${esc(w.target.name)} / ${esc(w.connection.remote)}</title></path><circle cx="${a.x+ap.x}" cy="${a.y+ap.y}" r="3.5" fill="${color}"/><circle cx="${b.x+bp.x}" cy="${b.y+bp.y}" r="3.5" fill="${color}"/>`;}).join('');}
+  else{const {children}=treePositions(list);edges=[...children].flatMap(([p,ns])=>p==='__product__'?[]:ns.map(n=>{const a=positions.get(p),b=positions.get(n.id);return `<path d="M ${a.x+210} ${a.y+45} C ${a.x+235} ${a.y+45},${b.x-25} ${b.y+45},${b.x} ${b.y+45}" fill="none" stroke="#b9c9b0" stroke-width="1.5"/>`;})).join('');}
+  const width=Math.max(350,...list.map(n=>positions.get(n.id).x+sizes.get(n.id).width+100)),height=Math.max(280,...list.map(n=>positions.get(n.id).y+sizes.get(n.id).height+100));latestGeometry={positions,sizes,width,height};
+  $('#graph').style.width=width*zoom+'px';$('#graph').style.height=height*zoom+'px';$('#nodes').style.width=width+'px';$('#nodes').style.height=height+'px';$('#nodes').style.transform=`scale(${zoom})`;$('#nodes').style.transformOrigin='0 0';const svg=$('#edges');svg.style.width=width+'px';svg.style.height=height+'px';svg.style.transform=`scale(${zoom})`;svg.style.transformOrigin='0 0';svg.innerHTML=edges;
+  $('#nodes').innerHTML=list.map(n=>wiring?physicalBoardHTML(n,geo.get(n.id),positions.get(n.id)):`<button class="node ${selected===n.id?'selected':''}" data-node="${esc(n.id)}" data-drag="${esc(n.id)}" data-category="${esc(n.category)}" style="left:${positions.get(n.id).x}px;top:${positions.get(n.id).y}px;width:210px;height:90px"><span class="node-icon">${categories[n.category][1]}</span><span><strong>${esc(n.name)}</strong><small>${esc(categories[n.category][0])}</small><span class="qty">${n.quantity} ${n.quantity===1?'unit':'units'} · drag to move</span></span></button>`).join('')||'<p class="muted" style="padding:40px">No components in this view.</p>';
+  $$('[data-node],[data-select-board]').forEach(b=>b.onclick=()=>{if(performance.now()<ignoreClickUntil)return;selected=b.dataset.node||b.dataset.selectBoard;renderGraph();renderInspector();});$$('[data-pin-device]').forEach(b=>b.onclick=()=>{selected=b.dataset.pinDevice;renderInspector();openConnection(node(selected),b.dataset.pinId);});$('#zoomValue').textContent=Math.round(zoom*100)+'%';if($('#zoomRange'))$('#zoomRange').value=Math.round(zoom*100);
+  $('.canvas-caption').innerHTML=wiring?'PHYSICAL PIN WIRING <span>Drag board titles · click pins to connect</span>':'PRODUCT ARCHITECTURE <span>Drag components to arrange</span>';$('.canvas-footer > span').textContent=wiring?'Lines connect specific physical pin IDs':'Lines show assembly relationships';$('#canvas').classList.toggle('wiring-canvas',wiring);
+};
+function setMapZoom(value,point=null){
+  const canvas=$('#canvas'),old=zoom,rect=canvas.getBoundingClientRect(),px=point?point.x-rect.left:canvas.clientWidth/2,py=point?point.y-rect.top:canvas.clientHeight/2;
+  const worldX=(canvas.scrollLeft+px)/old,worldY=(canvas.scrollTop+py-54)/old;zoom=Math.max(.1,Math.min(3,value));renderGraph();canvas.scrollLeft=Math.max(0,worldX*zoom-px);canvas.scrollTop=Math.max(0,worldY*zoom-py+54);
+}
+function fitMap(){renderGraph();const c=$('#canvas');zoom=Math.max(.1,Math.min(1,(c.clientWidth-16)/latestGeometry.width,(c.clientHeight-105)/latestGeometry.height));renderGraph();c.scrollTo(0,0);}
+setView=function(v){view=v;$('#fullView').classList.toggle('selected',v==='full');$('#electronicsView').classList.toggle('selected',v==='electronics');$('#wiringView').classList.toggle('selected',v==='wiring');$$('[data-filter]').forEach(c=>c.disabled=v!=='full'&&!categories[c.dataset.filter][2]);renderGraph();fitMap();};
+function moveComponent(id,mode,x,y){const n=node(id);if(!n)return;n.positions=n.positions||{};n.positions[mode]={x:Math.round(Math.max(10,Math.min(100000,x))),y:Math.round(Math.max(10,Math.min(100000,y)))};}
+let dragState=null,ignoreClickUntil=0;
+function enableMapDragging(){
+  const canvas=$('#canvas');canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;const handle=e.target.closest('[data-drag]');if(!handle)return;const id=handle.dataset.drag,pos=latestGeometry.positions.get(id);if(!pos)return;dragState={id,mode:mapMode(),pointer:e.pointerId,startX:e.clientX,startY:e.clientY,origin:{...pos},saved:structuredClone(node(id).positions||{}),moved:false};canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener('pointermove',e=>{if(!dragState||e.pointerId!==dragState.pointer)return;const dx=e.clientX-dragState.startX,dy=e.clientY-dragState.startY;if(!dragState.moved&&Math.hypot(dx,dy)<4)return;dragState.moved=true;e.preventDefault();moveComponent(dragState.id,dragState.mode,dragState.origin.x+dx/zoom,dragState.origin.y+dy/zoom);renderGraph();});
+  canvas.addEventListener('pointerup',e=>{if(!dragState||e.pointerId!==dragState.pointer)return;const state=dragState;dragState=null;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);selected=state.id;ignoreClickUntil=performance.now()+250;if(state.moved)changed(`Moved ${node(state.id).name} on ${state.mode} map`);else renderGraph();renderInspector();});
+  canvas.addEventListener('pointercancel',()=>{if(dragState){node(dragState.id).positions=dragState.saved;dragState=null;renderGraph();}});
+  canvas.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();setMapZoom(zoom*Math.exp(-e.deltaY*.002),{x:e.clientX,y:e.clientY});}},{passive:false});
+}
+differences=function(){const before=new Map((project.baseline||[]).map(n=>[n.id,n])),after=new Map(project.nodes.map(n=>[n.id,n]));const sig=n=>JSON.stringify(Object.fromEntries(Object.entries(n).filter(([k])=>!['attachments','positions'].includes(k)).sort(([a],[b])=>a.localeCompare(b))))+JSON.stringify((n.attachments||[]).map(a=>[a.name,a.size]));return {added:project.nodes.filter(n=>!before.has(n.id)).map(n=>({id:n.id,name:n.name,category:n.category})),removed:[...before.values()].filter(n=>!after.has(n.id)).map(n=>({id:n.id,name:n.name,category:n.category,connections:n.connections||[]})),modified:project.nodes.filter(n=>before.has(n.id)&&sig(n)!==sig(before.get(n.id))).map(n=>({id:n.id,name:n.name,before:before.get(n.id),after:n}))};};
+brief=function(){return originalBrief().replace('Schema: Partmap 1.0','Schema: Partmap 2.0')+'\n\n## Physical pin inventories (stable IDs)\n'+project.nodes.filter(n=>n.pins.length).map(n=>`### ${n.name} [component ${n.id}]\n`+n.pins.map(p=>`- ${pinLabel(n,p)} [pin ${p.id}]: ${p.type}${p.notes?' — '+p.notes:''}`).join('\n')).join('\n\n')+'\n\nRepeated labels are distinct physical pins. Do not assume pins in separate headers or channels are electrically common without verifying the device. Component positions are visual layout only.';};
+suggestions=function(){const result=[];for(const n of project.nodes.filter(n=>categories[n.category][2])){if(!n.model)result.push(`${n.name}: record an exact model and revision.`);if(!n.voltage)result.push(`${n.name}: verify power and logic levels.`);if(!wiresFor(n).length)result.push(`${n.name}: record signal, power, and ground wiring.`);if(n.pinSections.some(s=>s.side==='channel'))result.push(`${n.name}: distinguish logic VCC from actuator V+ and verify channel current and common-ground requirements.`);}const endpointCounts=new Map();for(const w of wireRecords())for(const [n,p] of [[w.source,w.connection.localPinId],[w.target,w.connection.remotePinId]]){const key=JSON.stringify([n.id,p]);if(!endpointCounts.has(key))endpointCounts.set(key,{n,p,count:0});endpointCounts.get(key).count++;}for(const {n,p,count} of endpointCounts.values())if(count>1)result.push(`${n.name} / ${pinLabel(n,n.pins.find(x=>x.id===p))} has ${count} connections; verify the intended shared connection.`);return result;};
+function initializeHardware(){
+  const pinInput=$('[name=pinNames]');pinInput.closest('label').insertAdjacentHTML('beforebegin','<label>Pin layout preset<select name="pinPreset" id="pinPreset"><option value="custom">Custom pin sections</option><option value="servo16">16-channel PWM driver: left/right headers + channels + power</option></select></label>');pinInput.placeholder='Left header::GND; Left header::3.3V\nRight header::GND; Right header::3.3V';pinInput.closest('label').querySelector('small').textContent='Use Section::Pin for separate headers. Repeated labels are allowed; each physical pin has its own ID.';
+  $('#componentForm').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{const n={id:uid(),parent:f.parent||null,name:f.name.trim(),category:f.category,quantity:Number(f.quantity),model:f.model,notes:f.notes,ready:false,voltage:'',interface:'',firmware:'',pins:pinList(f.pinNames),pinSections:[],connections:[],attachments:[]};normalizeNodePins(n);if(f.pinPreset==='servo16')applyServoPreset(n);validatePhysicalNodes([n]);if(categories[n.category][2])addDeviceCopies(n,n.quantity);else{if(project.nodes.length>=300)throw Error('Maximum 300 components.');project.nodes.push(n);}selected=n.id;enabled.add(n.category);setView(view);changed(`Added ${n.name} as separate device instance(s)`);renderInspector();$('#componentDialog').close();}catch(err){toast(err.message);}};
+  const controls=document.createElement('div');controls.className='map-controls';controls.innerHTML='<span class="map-help">Drag to arrange · Ctrl + wheel to zoom</span><div id="visibleZoom"></div><button id="autoArrange" class="button">Auto arrange</button><button id="expandMap" class="button">Expand map</button>';
+  $('#canvas').before(controls);$('#visibleZoom').append($('.canvas-footer div'));const range=document.createElement('input');range.type='range';range.min='10';range.max='300';range.step='5';range.id='zoomRange';range.setAttribute('aria-label','Map zoom');$('#zoomValue').after(range);range.oninput=()=>setMapZoom(Number(range.value)/100);$('#zoomOut').onclick=()=>setMapZoom(zoom/1.2);$('#zoomIn').onclick=()=>setMapZoom(zoom*1.2);$('#fitBtn').onclick=fitMap;
+  $('#autoArrange').onclick=()=>{for(const n of project.nodes)if(n.positions)delete n.positions[mapMode()];changed(`Auto-arranged ${mapMode()} map`);fitMap();};$('#expandMap').onclick=()=>{const expanded=$('.map-panel').classList.toggle('expanded');$('#expandMap').textContent=expanded?'Close expanded map':'Expand map';fitMap();};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('.map-panel').classList.contains('expanded')){$('.map-panel').classList.remove('expanded');$('#expandMap').textContent='Expand map';fitMap();}});
+  enableMapDragging();render();
+}
+initializeHardware();

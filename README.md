@@ -31,7 +31,9 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Nested component trees with full product and electronics-only views.
 - Parts readiness checklist for electronics, motors, printed parts, and fasteners.
 - CSV, TXT, pasted-list, and JSON imports with a preview and append/replace options.
-- Board-style wiring view, editable pins, and explicit pin-to-pin connections.
+- Physical pin sections with separate left/right headers, channel columns, power terminals, and explicit pin-to-pin connections.
+- A 16-channel PWM layout preset with 62 pins and independent repeated labels.
+- Independent device duplication, saved drag positions, zoom from 10% to 300%, fit, and an expanded map.
 - Reference file attachments and component specifications.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
@@ -49,8 +51,9 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `dist/style.css`: layout and styles
 - `dist/app.js`: component tree, checklist, persistence, and exports
 - `dist/studio.js`: pin inventories, wiring view, and parts-list import preview
+- `dist/hardware.js`, `dist/hardware.css`: stable pin IDs, nested sections, device instances, grouped board layouts, dragging, and zoom
 - `dist/example-parts.csv`, `dist/example-parts.txt`: import examples
 - `preview.cjs`: local static server
-- `check.cjs`, `check-studio.cjs`: verification scripts
+- `check.cjs`, `check-studio.cjs`, `check-hardware.cjs`: verification scripts
 
 The app is intended for local use. Pushing source changes to this repository does not publish a website or change the previous hosted copy.

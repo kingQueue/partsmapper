@@ -1,0 +1,25 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const els=new Map();function el(s){if(!els.has(s))els.set(s,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:'',clientWidth:800});return els.get(s);}
+const ctx={document:{querySelector:el,querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},structuredClone,crypto:require('crypto').webcrypto,console,setTimeout,clearTimeout,performance};vm.createContext(ctx);
+for(const file of ['app.js','studio.js'])vm.runInContext(fs.readFileSync('dist/'+file,'utf8').replace(/\nrender\(\);\s*$/,''),ctx);
+vm.runInContext(fs.readFileSync('dist/hardware.js','utf8').replace(/initializeHardware\(\);\s*$/,''),ctx);const run=s=>vm.runInContext(s,ctx);
+assert.equal(run('differences().modified.length'),0,'Migrating old pins should keep baseline comparison stable');assert.equal(run('wireRecords().length'),4);
+assert.ok(run('node("controller").pins.every(p=>p.id&&p.section)'));
+run('const driver=duplicateDevice(node("controller"),"PWM driver");driver.pins=[];driver.pinSections=[];normalizeNodePins(driver);applyServoPreset(driver);project.nodes.push(driver)');
+assert.equal(run('driver.pins.length'),62);assert.equal(run('driver.pins.filter(p=>p.name==="GND").length'),19);assert.equal(run('driver.pins.filter(p=>p.name==="PWM").length'),16);
+assert.equal(run('new Set(driver.pins.map(p=>p.id)).size'),62);
+run('const leftGnd=driver.pins.find(p=>p.section==="logic-left"&&p.name==="GND");const rightGnd=driver.pins.find(p=>p.section==="logic-right"&&p.name==="GND");const out=node("display").pins[0];saveWire(driver,leftGnd.id,"display",out.id);saveWire(driver,rightGnd.id,"display",out.id)');
+assert.equal(run('wiresFor(driver).length'),2);assert.throws(()=>run('saveWire(driver,leftGnd.id,"display",out.id)'),/already connected/);
+run('leftGnd.name="GROUND";syncConnectionLabels(project)');assert.ok(run('driver.connections[0].local').includes('GROUND'));assert.equal(run('driver.connections[0].localPinId'),run('leftGnd.id'));
+run('const copy=duplicateDevice(driver);project.nodes.push(copy)');assert.notEqual(run('driver.id'),run('copy.id'));assert.equal(run('copy.connections.length'),0);assert.notEqual(run('driver.pins[0].id'),run('copy.pins[0].id'));run('copy.pins[0].name="TEST";copy.pinSections[0].name="Independent"');assert.notEqual(run('driver.pins[0].name'),'TEST');assert.notEqual(run('driver.pinSections[0].name'),'Independent');
+const imported=run('parseParts("name,category,quantity,pins\\nServo,motor,2,PWM;V+;GND\\nScrews,fastener,4,","csv")');assert.equal(imported.nodes.length,3);assert.equal(imported.nodes.filter(n=>n.category==='motor').length,2);assert.equal(imported.nodes.find(n=>n.category==='fastener').quantity,4);
+assert.equal(run('parseParts("Board | 1 | board | | Left::GND;Right::GND").nodes[0].pins.length'),2);
+run('moveComponent(driver.id,"wiring",450,300)');const round=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(round.nodes.find(n=>n.name==='PWM driver').positions.wiring.x,450);assert.equal(round.nodes.find(n=>n.name==='PWM driver').pins.length,62);assert.ok(run('brief()').includes('Logic interface headers / Right header / GND'));
+assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pins[1].id=invalid.pins[0].id;validate({name:"bad",nodes:[{...invalid,connections:[]}]});}'),/Duplicate pin IDs/);
+assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pinSections[0].parent=invalid.pinSections[0].id;validatePhysicalNodes([invalid]);}'),/cycle/);
+run('project.baseline=structuredClone(project.nodes);moveComponent(driver.id,"wiring",900,700)');assert.equal(run('differences().modified.length'),0,'Visual layout must not produce firmware changes');
+run('view="wiring";renderGraph()');assert.ok(el('#nodes').innerHTML.includes('physical-board'));assert.ok(el('#nodes').innerHTML.includes('CH 15'));assert.equal(run('boardGeometry(driver).pins.size'),62);assert.equal((el('#edges').innerHTML.match(/<path/g)||[]).length,6);
+run('removePhysicalPin(driver,leftGnd.id)');assert.equal(run('wiresFor(driver).length'),1);assert.ok(run('driver.pins.some(p=>p.id===rightGnd.id)'));
+run('removePinSection(driver,"logic")');assert.equal(run('driver.pins.length'),50);assert.equal(run('wiresFor(driver).length'),0);assert.ok(!run('driver.pinSections.some(s=>s.parent==="logic")'));
+assert.equal(run('parseParts("Board | 1 | board | | Right header::GND").nodes[0].pinSections.find(s=>s.name==="Right header").side'),'right');
+console.log('Passed: legacy stable-ID migration, 62-pin preset, repeated labels, separate header wires, pin rename identity, independent device copies, quantity expansion, grouped CSV/text imports, layout round trip, cyclic sections, duplicate IDs, firmware change filtering, grouped wire geometry, precise pin deletion.');
