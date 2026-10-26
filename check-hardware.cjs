@@ -31,4 +31,21 @@ run('view="wiring";renderGraph()');assert.ok(el('#nodes').innerHTML.includes('ph
 run('removePhysicalPin(driver,leftGnd.id)');assert.equal(run('wiresFor(driver).length'),1);assert.ok(run('driver.pins.some(p=>p.id===rightGnd.id)'));
 run('removePinSection(driver,"logic")');assert.equal(run('driver.pins.length'),50);assert.equal(run('wiresFor(driver).length'),0);assert.ok(!run('driver.pinSections.some(s=>s.parent==="logic")'));
 assert.equal(run('parseParts("Board | 1 | board | | Right header::GND").nodes[0].pinSections.find(s=>s.name==="Right header").side'),'right');
-console.log('Passed: legacy migration, grouped presets, repeated pin labels, header creation and pin moves, preserved incoming/outgoing wires and IDs, pin reordering, JSON round trips, independent device copies, quantity expansion, layout persistence, section validation, grouped wire geometry, and precise pin deletion.');
+// Exercise navigation through the registered handlers without changing component data.
+const canvas=el('#canvas'),handlers={};let captured=null;
+Object.assign(canvas,{scrollLeft:400,scrollTop:300,clientHeight:540,addEventListener(type,fn){(handlers[type]??=[]).push(fn);},setPointerCapture(id){captured=id;},hasPointerCapture(id){return captured===id;},releasePointerCapture(){captured=null;}});
+run('let zoomCall=null;setMapZoom=(value,point)=>{zoomCall={value,point};};enableMapDragging()');
+function fire(type,options={}){const event={button:0,pointerId:1,clientX:300,clientY:250,deltaX:0,deltaY:0,deltaMode:0,preventDefault(){this.prevented=true;},target:{closest(){return null;}},...options};for(const fn of handlers[type]||[])fn(event);return event;}
+const originalNodes=run('JSON.stringify(project.nodes)');
+fire('pointerdown');fire('pointermove',{clientX:240,clientY:210});assert.equal(canvas.scrollLeft,460);assert.equal(canvas.scrollTop,340);
+fire('pointerup');assert.equal(captured,null);fire('pointermove',{clientX:200});assert.equal(canvas.scrollLeft,460);
+fire('pointerdown');fire('pointercancel');fire('pointermove',{clientX:100});assert.equal(canvas.scrollLeft,460);
+fire('pointerdown',{target:{closest:s=>s==='[data-drag]'?null:{}}});assert.equal(captured,null,'Controls and boards must not start background panning');
+assert.ok(fire('wheel',{deltaY:120}).prevented);assert.ok(run('zoomCall.value<zoom'));assert.equal(run('zoomCall.point.x'),300);
+fire('wheel',{deltaY:-120});assert.ok(run('zoomCall.value>zoom'));
+fire('wheel',{deltaY:80,shiftKey:true});assert.equal(canvas.scrollLeft,540);
+fire('wheel',{deltaX:-60,deltaY:5});assert.equal(canvas.scrollLeft,480);assert.equal(canvas.scrollTop,345);
+assert.equal(run('mapWheelAction({deltaX:0,deltaY:3,deltaMode:1,shiftKey:true},540).x'),48);
+assert.equal(run('mapWheelAction({deltaX:0,deltaY:1,deltaMode:2,shiftKey:true},540).x'),540);
+assert.equal(run('JSON.stringify(project.nodes)'),originalNodes,'Navigation must not change components, pins, or wires');
+console.log('Passed: hardware model, headers, independent copies, wire geometry, wheel zoom, horizontal scrolling, background pan/cancel, and navigation preserving project data.');

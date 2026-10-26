@@ -40,7 +40,7 @@ Copies include the saved specifications, nested pin sections, pin types/notes, a
 
 Drag a component in the product map or drag a board's title in Wiring to reposition it. Wire endpoints update as it moves. Positions save automatically, survive reload, and travel with JSON exports. Product/electronics views share a tree layout; Wiring has its own saved layout. Moving components does not count as a firmware change in the AI brief.
 
-Use the visible minus/plus buttons, the 10%–300% zoom slider, or Ctrl/Command + mouse wheel to zoom. The fit button fits the visible map; **Expand map** provides a larger workspace. **Auto arrange** clears manual positions in the current layout and restores the generated arrangement.
+Use the visible minus/plus buttons, the 10%–300% zoom slider, or the mouse wheel to zoom around the cursor. Hold Shift while scrolling to move horizontally; a horizontal trackpad or mouse-wheel gesture also scrolls sideways. Drag empty map space to pan in any direction, or use the horizontal and vertical scrollbars. Component dragging still moves only that component. The fit button fits the visible map; **Expand map** provides a larger workspace. **Auto arrange** clears manual positions in the current layout and restores the generated arrangement.
 
 Reference uploads: PNG, JPG, GIF, WebP, PDF, TXT, MD, JSON, CSV; maximum 1.5 MB per file. This version stores files as references and does not automatically extract specifications from datasheets. Enter component details manually. Browser storage limits apply; a failed save displays a warning. This version supports up to 300 nodes.
 
