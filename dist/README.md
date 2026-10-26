@@ -45,3 +45,14 @@ Use the visible minus/plus buttons, the 10%–300% zoom slider, or the mouse whe
 Reference uploads: PNG, JPG, GIF, WebP, PDF, TXT, MD, JSON, CSV; maximum 1.5 MB per file. This version stores files as references and does not automatically extract specifications from datasheets. Enter component details manually. Browser storage limits apply; a failed save displays a warning. This version supports up to 300 nodes.
 
 The starter project is illustrative. Verify exact models, voltage/current, drivers, bus addresses, and all pin connections against your hardware before firmware or power-up. The visual lines describe assembly hierarchy; electrical connections are recorded separately in node details. Design prompts are rule-based checks, not live datasheet research or an embedded AI service.
+
+
+### Shared component library and PCB workspace
+
+The Component library appears above the product map and in the left navigation. Search the starter templates, drag one down into the map, or use its + button. The destination selector assigns a parent. These generic ESP32, RP2040, PWM-driver, encoder, motor, and OLED templates are editable starting points, not verified full pinouts. Every placement gets independent component and pin IDs with no copied wiring.
+
+Select any project component and choose **Save to library** to keep its specifications, nested headers, reference files, and reusable firmware notes. The saved snapshot is independent of later project edits. Library templates persist separately in this browser and can be downloaded with **Export library**; they are not included in Project JSON. Firmware notes copy into new components and their normal AI handoff. Versioned executable firmware modules and dependency management are future features.
+
+Choose **Make a PCB** in the green navigation column. Drag from the same component library or from the current project's electronic parts onto the board; + buttons also place parts. Set the board name and size in millimeters, drag blocks on a 1 mm placement grid, resize generic component blocks, rotate them, and remove placements. Board dimensions range from 20 to 500 mm. Placements cannot extend outside the board; shrinking a board rejects a size that would exclude an existing placement. The canvas scrolls in both axes and has zoom controls.
+
+PCB placements preserve a component snapshot and source reference. They do not add/remove project parts or change electrical wiring; deleting or editing the source does not automatically alter a placed snapshot. PCB sketches save with the current project and are included in full Project JSON backup/import. **Export PCB sketch** downloads a separate placement document. This is a placement foundation: it does not define actual footprints/pads, route copper, generate drills or Gerbers, or check manufacturability. The Gerber button is visibly marked as planned.

@@ -1,0 +1,27 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const storage=new Map(),els=new Map();const el=s=>{if(!els.has(s))els.set(s,{style:{},classList:{add(){},remove(){},toggle(){}},value:'',innerHTML:'',textContent:''});return els.get(s);};
+const ctx={document:{querySelector:el,querySelectorAll:()=>[]},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},structuredClone,crypto:require('crypto').webcrypto,console,setTimeout,clearTimeout,performance};vm.createContext(ctx);
+for(const name of ['app','studio','hardware','clipboard','workbench']){let code=fs.readFileSync(`dist/${name}.js`,'utf8');code=code.replace(/\n(?:render\(\)|initializeHardware\(\)|initializeComponentClipboard\(\)|initializeWorkbench\(\));\s*$/,'');vm.runInContext(code,ctx);}
+const run=s=>vm.runInContext(s,ctx);
+assert.equal(run('allLibraryParts().length'),6);
+assert.equal(run('findLibraryPart("builtin-pwm").pins.length'),62);
+run('const first=instantiateLibraryPart("builtin-encoder");const second=instantiateLibraryPart("builtin-encoder",first.id,{x:400,y:150})');
+assert.notEqual(run('first.id'),run('second.id'));assert.equal(run('second.parent'),run('first.id'));assert.notEqual(run('first.pins[0].id'),run('second.pins[0].id'));assert.equal(run('second.positions.tree.x'),400);
+run('first.firmware="Reusable encoder driver notes";const saved=saveLibraryPart(first);first.firmware="Changed source"');
+assert.equal(run('saved.firmware'),'Reusable encoder driver notes');assert.equal(run('saved.connections.length'),0);assert.ok(storage.has('partmap.library.v1'));
+assert.throws(()=>run('instantiateLibraryPart("missing")'),/existing/);
+const nodesBefore=run('JSON.stringify(project.nodes)');
+run('const placement=addPcbPlacement("project",first.id,99,79);const other=addPcbPlacement("library","builtin-esp32",10,10)');
+assert.equal(run('placement.x'),82);assert.equal(run('placement.y'),68);
+assert.equal(run('placement.component.firmware'),'Changed source');
+run('movePcbPlacement(placement,-100,1000)');assert.equal(run('placement.x'),0);assert.equal(run('placement.y'),68);
+assert.equal(run('JSON.stringify(project.nodes)'),nodesBefore,'PCB placement must not mutate the project map');
+run('placement.rotation=90;movePcbPlacement(placement,500,500)');assert.equal(run('placement.x'),88);assert.equal(run('placement.y'),62);
+assert.throws(()=>run('resizePcb(20,20)'),/outside/);assert.equal(run('project.pcb.width'),100);
+assert.throws(()=>run('resizePcb(NaN,80)'),/Invalid/);
+const data=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(data.pcb.placements.length,2);assert.equal(data.pcb.placements[0].rotation,90);
+run('const imported=validate(JSON.parse(JSON.stringify(exportObject())));project=imported');assert.equal(run('project.pcb.placements[0].component.firmware'),'Changed source');
+assert.throws(()=>run('{const bad=structuredClone(project);bad.pcb.placements[1].id=bad.pcb.placements[0].id;validate(bad);}'),/Invalid/);
+assert.throws(()=>run('addPcbPlacement("project","shell")'),/electronic/);
+assert.equal(run('validate({name:"Legacy",nodes:project.nodes}).pcb'),null);
+console.log('Passed: reusable templates, independent component/pin IDs, firmware snapshots, local library persistence, PCB placement/rotation bounds, atomic resizing, project isolation, PCB JSON round trips, and invalid layout rejection.');

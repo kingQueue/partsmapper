@@ -36,6 +36,9 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Header organizer with header creation, drag-and-drop pin moves/reordering, and preserved wiring.
 - Independent device duplication, saved drag positions, zoom from 10% to 300%, fit, and an expanded map.
 - Component copy/paste with Ctrl+C/Ctrl+V (Command on Mac), bulk new-copy counts, and parent selection.
+- Shared component library with draggable starter boards, independent instances, and saved project-part templates.
+- PCB placement workspace using library or project parts, millimeter sizing, movable/rotatable blocks, and JSON sketch exports.
+- Reusable firmware notes in component templates; executable firmware libraries and manufacturing Gerber export are planned.
 - Reference file attachments and component specifications.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
@@ -55,6 +58,7 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `dist/studio.js`: pin inventories, wiring view, and parts-list import preview
 - `dist/hardware.js`, `dist/hardware.css`: stable pin IDs, nested sections, device instances, grouped board layouts, dragging, and zoom
 - `dist/clipboard.js`, `dist/clipboard.css`: independent component snapshots, copy/paste controls, keyboard shortcuts, and bulk paste
+- `dist/workbench.js`, `dist/workbench.css`: reusable component templates, firmware-note reuse, and PCB placement sketches
 - `dist/example-parts.csv`, `dist/example-parts.txt`: import examples
 - `preview.cjs`: local static server
 - `check.cjs`, `check-studio.cjs`, `check-hardware.cjs`, `check-clipboard.cjs`: verification scripts
