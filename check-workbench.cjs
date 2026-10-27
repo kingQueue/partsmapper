@@ -24,4 +24,22 @@ run('const imported=validate(JSON.parse(JSON.stringify(exportObject())));project
 assert.throws(()=>run('{const bad=structuredClone(project);bad.pcb.placements[1].id=bad.pcb.placements[0].id;validate(bad);}'),/Invalid/);
 assert.throws(()=>run('addPcbPlacement("project","shell")'),/electronic/);
 assert.equal(run('validate({name:"Legacy",nodes:project.nodes}).pcb'),null);
-console.log('Passed: reusable templates, independent component/pin IDs, firmware snapshots, local library persistence, PCB placement/rotation bounds, atomic resizing, project isolation, PCB JSON round trips, and invalid layout rejection.');
+
+run('const libraryPwm=findLibraryPart("builtin-pwm");const pwmInstance=instantiateLibraryPart(libraryPwm.id);const savedPwm=saveLibraryPart(pwmInstance);const restoredPwm=instantiateLibraryPart(savedPwm.id);const pcbPwm=addPcbPlacement("project",restoredPwm.id);');
+assert.equal(run('pcbPwm.component.pins.length'),62);assert.equal(run('pcbPwm.component.pinSections.filter(s=>s.side==="channel").length'),16);
+assert.equal(run('pcbPwm.component.pinSections.find(s=>s.id==="power-terminal").style'),'terminal-block');
+assert.equal(run('pcbPwm.component.pinSections.find(s=>s.id==="actuators").style'),'servo-bank');
+assert.equal(run('JSON.stringify(pcbPwm.component.pinSections)'),run('JSON.stringify(restoredPwm.pinSections)'));
+run('const copiedFromPcb=copyPcbPlacementToProject(pcbPwm.id)');
+assert.equal(run('copiedFromPcb.pins.length'),62);assert.equal(run('JSON.stringify(copiedFromPcb.pinSections)'),run('JSON.stringify(restoredPwm.pinSections)'));
+assert.notEqual(run('copiedFromPcb.pins[0].id'),run('restoredPwm.pins[0].id'));
+assert.equal(run('copiedFromPcb.connections.length'),0);
+assert.equal(run('(pcbHeaderPreview(pcbPwm).match(/data-pcb-preview-pin/g)||[]).length'),62);
+assert.ok(run('pcbHeaderInventory(pcbPwm.component)').includes('PWM'));
+run('copiedFromPcb.pinSections.find(s=>s.id==="logic-left").name="Edited copy";copiedFromPcb.pins[0].name="Changed pin"');
+assert.notEqual(run('pcbPwm.component.pins[0].name'),'Changed pin');assert.notEqual(run('savedPwm.pinSections.find(s=>s.id==="logic-left").name'),'Edited copy');
+const pcbRound=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(pcbRound.pcb.placements.at(-1).component.pins.length,62);
+assert.ok(run('boardGeometry(libraryPwm).width<=500&&boardGeometry(libraryPwm).height<420'),'PWM card should use compact geometry');
+assert.ok(run('boardGeometry(node("controller")).width<=200'),'Small boards should no longer use a wide empty card');
+
+console.log('Passed: compact board geometry, full header/pin preservation through library/project/PCB copies, previews and inventories, reusable templates, independent component/pin IDs, firmware snapshots, local library persistence, PCB placement/rotation bounds, atomic resizing, project isolation, PCB JSON round trips, and invalid layout rejection.');

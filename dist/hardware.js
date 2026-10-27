@@ -237,30 +237,31 @@ function boardGeometry(n) {
   const populated=n.pinSections.filter(s=>n.pins.some(p=>p.section===s.id));
   const channels=populated.filter(s=>s.side==='channel'),terminals=populated.filter(s=>s.style==='terminal-block');
   const banks=n.pinSections.filter(s=>s.style==='servo-bank'),edgeHeaders=populated.filter(s=>['top','bottom'].includes(s.side)&&s.style!=='terminal-block');
-  const width=Math.max(banks.length?780:channels.length>4||populated.some(s=>s.side==='right')?600:280,...terminals.map(s=>n.pins.filter(p=>p.section===s.id).length*54+24),...edgeHeaders.map(s=>n.pins.filter(p=>p.section===s.id).length*46+24)),blocks=[],pins=new Map();let y=72;
-  function addTerminal(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*54,h=86,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'screw-terminal',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*54+27,y:y+50,side:s.side==='top'?'top':'bottom',escapeX:x+i*54+27}));y+=h+14;}
-  function addEdgeHeader(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*46,h=72,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'edge-header',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*46+23,y:y+49,side:s.side,escapeX:x+i*46+23}));y+=h+14;}
+  const width=Math.max(banks.length?500:channels.length>4?Math.max(220,channels.length*28+16):populated.some(s=>s.side==='right')?300:200,...terminals.map(s=>n.pins.filter(p=>p.section===s.id).length*36+16),...edgeHeaders.map(s=>n.pins.filter(p=>p.section===s.id).length*32+16)),blocks=[],pins=new Map();let y=48;
+  function addTerminal(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*36,h=62,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'screw-terminal',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*36+18,y:y+36,side:s.side==='top'?'top':'bottom',escapeX:x+i*36+18}));y+=h+8;}
+  function addEdgeHeader(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*32,h=52,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'edge-header',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*32+16,y:y+34,side:s.side,escapeX:x+i*32+16}));y+=h+8;}
   for(const s of terminals.filter(s=>s.side==='top'))addTerminal(s);
   for(const s of edgeHeaders.filter(s=>s.side==='top'))addEdgeHeader(s);
   function addBlock(s,x,top,w,kind='header'){
-    const list=n.pins.filter(p=>p.section===s.id),h=26+list.length*24;blocks.push({s,x,y:top,w,h,kind,list});
-    list.forEach((p,i)=>pins.set(p.id,{x:x+(s.side==='right'?w+1:3),y:top+41+i*24,side:s.side==='right'?'right':'left'}));return h;
+    const list=n.pins.filter(p=>p.section===s.id),h=18+list.length*18;blocks.push({s,x,y:top,w,h,kind,list});
+    list.forEach((p,i)=>pins.set(p.id,{x:x+(s.side==='right'?w+1:3),y:top+29+i*18,side:s.side==='right'?'right':'left'}));return h;
   }
   const headers=populated.filter(s=>!['channel','top','bottom'].includes(s.side)&&s.style!=='terminal-block'),left=headers.filter(s=>s.side!=='right'),right=headers.filter(s=>s.side==='right');
-  if(right.length){let ly=y,ry=y;for(const s of left)ly+=addBlock(s,12,ly,(width-36)/2)+12;for(const s of right)ry+=addBlock(s,width/2+6,ry,(width-36)/2)+12;y=Math.max(ly,ry);}
-  else for(const s of left)y+=addBlock(s,12,y,width-24)+12;
+  const headerWidth=s=>Math.min(150,Math.max(90,...n.pins.filter(p=>p.section===s.id).map(p=>p.name.length*6+22)));
+  if(right.length){let ly=y,ry=y;for(const s of left)ly+=addBlock(s,8,ly,headerWidth(s))+8;for(const s of right)ry+=addBlock(s,width-8-headerWidth(s),ry,headerWidth(s))+8;y=Math.max(ly,ry);}
+  else for(const s of left)y+=addBlock(s,8,y,Math.min(width-16,Math.max(110,headerWidth(s))))+8;
   const groups=[...banks.map(bank=>({title:bank.name,list:channels.filter(s=>s.parent===bank.id),bank:true})),{title:'Actuator channels',list:channels.filter(s=>!banks.some(b=>b.id===s.parent)),bank:false}];
-  for(const group of groups){if(!group.list.length)continue;blocks.push({kind:'group-label',title:group.title,x:12,y,w:width-24,h:25});y+=25;
-    const perRow=group.bank?16:Math.min(16,group.list.length),gap=group.bank?18:0,cw=(width-24-gap*3)/perRow;
-    for(let offset=0;offset<group.list.length;offset+=perRow){let rowHeight=0;const row=group.list.slice(offset,offset+perRow);if(group.bank){for(let b=0;b<Math.ceil(row.length/4);b++)blocks.push({kind:'bank-label',title:`Bank ${Math.floor(offset/4)+b+1} · CH ${offset+b*4}–${offset+Math.min(b*4+3,row.length-1)}`,x:12+b*(cw*4+gap),y,w:cw*4,h:22});y+=22;}
-      row.forEach((s,j)=>{const list=n.pins.filter(p=>p.section===s.id),h=26+list.length*24,x=12+j*cw+(group.bank?Math.floor(j/4)*gap:0);blocks.push({s,x,y,w:cw-3,h,kind:'channel',list});list.forEach((p,i)=>pins.set(p.id,{x:x+(cw-3)/2,y:y+41+i*24,escapeX:x+cw-1,side:'bottom'}));rowHeight=Math.max(rowHeight,h);});y+=rowHeight+12;
+  for(const group of groups){if(!group.list.length)continue;blocks.push({kind:'group-label',title:group.title,x:8,y,w:width-16,h:18});y+=18;
+    const perRow=group.bank?16:Math.min(16,group.list.length),gap=group.bank?12:0,cw=(width-16-gap*3)/perRow;
+    for(let offset=0;offset<group.list.length;offset+=perRow){let rowHeight=0;const row=group.list.slice(offset,offset+perRow);if(group.bank){for(let b=0;b<Math.ceil(row.length/4);b++)blocks.push({kind:'bank-label',title:`Bank ${Math.floor(offset/4)+b+1} · CH ${offset+b*4}–${offset+Math.min(b*4+3,row.length-1)}`,x:8+b*(cw*4+gap),y,w:cw*4,h:18});y+=18;}
+      row.forEach((s,j)=>{const list=n.pins.filter(p=>p.section===s.id),h=18+list.length*18,x=8+j*cw+(group.bank?Math.floor(j/4)*gap:0);blocks.push({s,x,y,w:cw-3,h,kind:'channel',list});list.forEach((p,i)=>pins.set(p.id,{x:x+(cw-3)/2,y:y+29+i*18,escapeX:x+cw-1,side:'bottom'}));rowHeight=Math.max(rowHeight,h);});y+=rowHeight+8;
     }
   }
   for(const s of terminals.filter(s=>s.side!=='top'))addTerminal(s);
   for(const s of edgeHeaders.filter(s=>s.side==='bottom'))addEdgeHeader(s);
-  if(!n.pins.length)y+=55;return {width,height:y+15,blocks,pins};
+  if(!n.pins.length)y+=28;return {width,height:y+8,blocks,pins};
 }
-function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id||mapSelection.has(n.id)?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>['group-label','bank-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${['screw-terminal','edge-header'].includes(b.kind)?`style="left:${i*(b.kind==='screw-terminal'?54:46)}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
+function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id||mapSelection.has(n.id)?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>['group-label','bank-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${['screw-terminal','edge-header'].includes(b.kind)?`style="left:${i*(b.kind==='screw-terminal'?36:32)}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
 let latestGeometry={positions:new Map(),sizes:new Map(),width:700,height:350};
 function mapMode(){return 'tree';}
 function routePhysicalWire(a,b,ap,bp,ag,bg,index){

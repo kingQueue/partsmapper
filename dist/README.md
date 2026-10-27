@@ -72,3 +72,10 @@ On the product/electronics map, Wiring, and the PCB workspace, enable **Box sele
 Product and Wiring selection follows the same component identities; Wiring expands their coordinates to fit its larger cards. PCB placements have their own selection because they are separate placement snapshots. Group movement changes layout only; it does not change assembly parents or electrical connections.
 
 Editing feedback appears as a persistent, high-contrast message inside the active dialog, above the form. Top and bottom header sections are now horizontal and centered on the board, above and below the left/right sections; screw-terminal blocks are centered as well. Wire endpoints track the updated terminal positions.
+
+
+### Compact wiring cards and preserved PCB headers
+
+Wiring cards use compact title bars, pin rows, header widths, and terminal spacing. Header blocks size to their contents instead of stretching across the board. The 16-channel PWM layout remains four groups of four servo connectors, with all physical pins and wire endpoints retained.
+
+Library templates and project parts carry their full nested header sections, styles, labels, types, notes, and pin inventories into PCB placement snapshots. PCB blocks now show a miniature logical header/pin preview. Select a PCB placement and expand **Preserved headers & pins** to inspect its complete inventory. **Add copy to product map** creates an independent project component from that snapshot, preserving header styles and relationships while giving the component and its pins new IDs. Wires and child components are not copied. Project JSON exports and reloads preserve these snapshots. The preview remains a logical diagram, not a verified pad/footprint definition for manufacturing.
