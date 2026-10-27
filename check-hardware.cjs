@@ -1,5 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const els=new Map();function el(s){if(!els.has(s))els.set(s,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:'',clientWidth:800});return els.get(s);}
+const els=new Map();function el(s){if(!els.has(s))els.set(s,{value:'',querySelector:()=>null,getBoundingClientRect:()=>({left:0,top:0}),style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:'',clientWidth:800});return els.get(s);}
 const ctx={document:{querySelector:el,querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},structuredClone,crypto:require('crypto').webcrypto,console,setTimeout,clearTimeout,performance};vm.createContext(ctx);
 for(const file of ['app.js','studio.js'])vm.runInContext(fs.readFileSync('dist/'+file,'utf8').replace(/\nrender\(\);\s*$/,''),ctx);
 vm.runInContext(fs.readFileSync('dist/hardware.js','utf8').replace(/initializeHardware\(\);\s*$/,''),ctx);const run=s=>vm.runInContext(s,ctx);
@@ -55,7 +55,7 @@ run('const wireToDelete=wireRecords().find(w=>w.source.id===styled.id).key;remov
 const canvas=el('#canvas'),handlers={};let captured=null;
 Object.assign(canvas,{scrollLeft:400,scrollTop:300,clientHeight:540,addEventListener(type,fn){(handlers[type]??=[]).push(fn);},setPointerCapture(id){captured=id;},hasPointerCapture(id){return captured===id;},releasePointerCapture(){captured=null;}});
 run('let zoomCall=null;setMapZoom=(value,point)=>{zoomCall={value,point};};enableMapDragging()');
-function fire(type,options={}){const event={button:0,pointerId:1,clientX:300,clientY:250,deltaX:0,deltaY:0,deltaMode:0,preventDefault(){this.prevented=true;},target:{closest(){return null;}},...options};for(const fn of handlers[type]||[])fn(event);return event;}
+function fire(type,options={}){const event={type,button:0,pointerId:1,clientX:300,clientY:250,deltaX:0,deltaY:0,deltaMode:0,preventDefault(){this.prevented=true;},target:{closest(){return null;}},...options};for(const fn of handlers[type]||[])fn(event);return event;}
 const originalNodes=run('JSON.stringify(project.nodes)');
 fire('pointerdown');fire('pointermove',{clientX:240,clientY:210});assert.equal(canvas.scrollLeft,460);assert.equal(canvas.scrollTop,340);
 fire('pointerup');assert.equal(captured,null);fire('pointermove',{clientX:200});assert.equal(canvas.scrollLeft,460);
@@ -68,4 +68,19 @@ fire('wheel',{deltaX:-60,deltaY:5});assert.equal(canvas.scrollLeft,480);assert.e
 assert.equal(run('mapWheelAction({deltaX:0,deltaY:3,deltaMode:1,shiftKey:true},540).x'),48);
 assert.equal(run('mapWheelAction({deltaX:0,deltaY:1,deltaMode:2,shiftKey:true},540).x'),540);
 assert.equal(run('JSON.stringify(project.nodes)'),originalNodes,'Navigation must not change components, pins, or wires');
-console.log('Passed: hardware model, headers, independent copies, wire geometry, wheel zoom, horizontal scrolling, background pan/cancel, and navigation preserving project data.');
+assert.ok(run('boxesIntersect(selectionBounds({x:100,y:100},{x:0,y:0}),{x:90,y:90,width:20,height:20})'));
+assert.equal(run('groupDelta([{x:20,y:30},{x:60,y:70}],-100,-100).x'),-10);
+assert.equal(run('groupDelta([{x:5,y:5,width:10,height:10},{x:40,y:30,width:20,height:10}],100,100,0,0,100,80).x'),40);
+run('renderInspector=()=>{};mapSelection.clear();mapSelection.add("controller");mapSelection.add("display");renderGraph();const moveOrigins=[...mapSelection].map(id=>({id,...latestGeometry.positions.get(id)}))');
+const handle={dataset:{drag:'controller'}};
+const componentTarget={closest:s=>s==='[data-drag]'?handle:null};
+fire('pointerdown',{target:componentTarget});fire('pointermove',{clientX:330,clientY:290});fire('pointerup');
+assert.ok(run('moveOrigins.every(p=>node(p.id).positions.tree.x===p.x+30&&node(p.id).positions.tree.y===p.y+40)'),'Group move preserves relative offsets');
+const afterGroup=run('JSON.stringify(project.nodes.map(n=>n.positions))');
+fire('pointerdown',{target:componentTarget});fire('pointermove',{clientX:390,clientY:330});fire('pointercancel');
+assert.equal(run('JSON.stringify(project.nodes.map(n=>n.positions))'),afterGroup,'Cancel restores all selected components');
+run('const centered=boardGeometry(styled);const terminalGeometry=centered.blocks.find(b=>b.kind==="screw-terminal");');
+assert.equal(run('terminalGeometry.x+terminalGeometry.w/2'),run('centered.width/2'));
+run('const topHeader=createHeaderSection(styled,"Top signal header","top");styled.pins.push({id:uid(),name:"SIGNAL",section:topHeader.id,type:"digital",notes:""});const bottomHeader=createHeaderSection(styled,"Bottom signal header","bottom");styled.pins.push({id:uid(),name:"GND",section:bottomHeader.id,type:"ground",notes:""});const edgeGeometry=boardGeometry(styled);const topGeometry=edgeGeometry.blocks.find(b=>b.s?.id===topHeader.id);const bottomGeometry=edgeGeometry.blocks.find(b=>b.s?.id===bottomHeader.id);');
+assert.equal(run('topGeometry.x+topGeometry.w/2'),run('edgeGeometry.width/2'));assert.equal(run('bottomGeometry.x+bottomGeometry.w/2'),run('edgeGeometry.width/2'));assert.ok(run('topGeometry.y<bottomGeometry.y'));
+console.log('Passed: box selection geometry, group movement/cancel/bounds, centered edge headers, hardware model, headers, independent copies, wire geometry, wheel zoom, horizontal scrolling, background pan/cancel, and navigation preserving project data.');

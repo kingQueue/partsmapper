@@ -40,6 +40,7 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Shared component library with draggable starter boards, independent instances, and saved project-part templates.
 - PCB placement workspace using library or project parts, millimeter sizing, movable/rotatable blocks, and JSON sketch exports.
 - Reusable firmware notes in component templates; executable firmware libraries and manufacturing Gerber export are planned.
+- Box selection and group dragging in product, wiring, and PCB views; visible validation feedback inside dialogs.
 - Reference file attachments and component specifications.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 

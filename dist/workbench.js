@@ -12,7 +12,7 @@ const defaultComponentLibrary=[
   makeLibraryTemplate('builtin-oled','I2C OLED display','peripheral','Header::VCC;Header::GND;Header::SDA;Header::SCL','I2C','Verify controller, dimensions, I2C address, and library version.')
 ];
 applyServoPreset(defaultComponentLibrary.find(n=>n.id==='builtin-pwm'));
-let savedComponentLibrary=[],libraryQuery='',pcbSelected=null,pcbScale=8,workbenchView='map';
+let savedComponentLibrary=[],libraryQuery='',pcbSelected=null,pcbScale=8,workbenchView='map',pcbSelectMode=false;const pcbSelection=new Set();
 function checkedTemplate(raw){const copy=structuredClone(raw);copy.parent=null;copy.connections=[];delete copy.positions;return validate({name:'Library template',nodes:[copy]}).nodes[0];}
 function allLibraryParts(){return [...defaultComponentLibrary,...savedComponentLibrary];}
 function findLibraryPart(id){return allLibraryParts().find(n=>n.id===id);}
@@ -75,7 +75,7 @@ function addLibraryToMap(id,point=null){try{const n=instantiateLibraryPart(id,$(
 function refreshLibraryParent(){const select=$('#libraryParent');if(!select)return;const old=select.value;select.innerHTML='<option value="">Product root</option>'+project.nodes.map(n=>`<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('');select.value=node(old)?old:'';}
 function renderPcb(){
   const pcb=project.pcb||newPcb(),workspace=$('#pcbWorkspace');
-  workspace.innerHTML=`<div class="workbench-heading"><div><div class="eyebrow">PCB WORKSPACE · PLACEMENT PREVIEW</div><h2>Make a PCB</h2><p>Arrange parts from your library or current project on a board measured in millimeters.</p></div><button class="button" id="pcbBack">Back to product map</button></div><div class="pcb-notice">Placement sketches use generic blocks, not verified footprints. Copper routing, pad definitions, design-rule checks, and Gerber export are planned.</div><div class="pcb-tools"><label>Board name<input id="pcbName" maxlength="200" value="${esc(pcb.name)}"></label><label>Width (mm)<input id="pcbWidth" type="number" min="20" max="500" value="${pcb.width}"></label><label>Height (mm)<input id="pcbHeight" type="number" min="20" max="500" value="${pcb.height}"></label><button class="button" id="pcbResize">Apply size</button><label>Zoom<select id="pcbZoom">${[4,6,8,12,16].map(v=>`<option value="${v}" ${pcbScale===v?'selected':''}>${v*12.5}%</option>`).join('')}</select></label><button class="button" id="pcbDownload">Export PCB sketch</button><button class="button" disabled title="Requires verified footprints, copper routing, drills, and manufacturing checks">Gerber export · planned</button></div><div class="pcb-layout"><aside class="pcb-palette"><h3>Shared component library</h3><p>Drag onto the board or click ＋.</p>${allLibraryParts().filter(n=>categories[n.category][2]).map(n=>libraryCardHTML(n)).join('')}<h3>From this project</h3>${project.nodes.filter(n=>categories[n.category][2]).map(n=>libraryCardHTML(n,'project')).join('')||'<p>No electronic parts yet.</p>'}</aside><div><div class="pcb-scroll"><div id="pcbBoard" style="width:${pcb.width*pcbScale}px;height:${pcb.height*pcbScale}px;background-size:${pcbScale*5}px ${pcbScale*5}px"><span class="pcb-board-label">${esc(pcb.name)} · ${pcb.width} × ${pcb.height} mm</span>${pcb.placements.map(p=>{const size=placementSize(p);return `<button class="pcb-part ${pcbSelected===p.id?'selected':''}" data-pcb-part="${esc(p.id)}" style="left:${p.x*pcbScale}px;top:${p.y*pcbScale}px;width:${size.width*pcbScale}px;height:${size.height*pcbScale}px"><strong>${esc(p.component.name)}</strong><small>${p.rotation}° · generic block</small></button>`;}).join('')}</div></div><div id="pcbPartDetails"></div></div></div>`;
+  workspace.innerHTML=`<div class="workbench-heading"><div><div class="eyebrow">PCB WORKSPACE · PLACEMENT PREVIEW</div><h2>Make a PCB</h2><p>Arrange parts from your library or current project on a board measured in millimeters.</p></div><button class="button" id="pcbBack">Back to product map</button></div><div class="pcb-notice">Placement sketches use generic blocks, not verified footprints. Copper routing, pad definitions, design-rule checks, and Gerber export are planned.</div><div class="pcb-tools"><label>Board name<input id="pcbName" maxlength="200" value="${esc(pcb.name)}"></label><label>Width (mm)<input id="pcbWidth" type="number" min="20" max="500" value="${pcb.width}"></label><label>Height (mm)<input id="pcbHeight" type="number" min="20" max="500" value="${pcb.height}"></label><button class="button" id="pcbResize">Apply size</button><label>Zoom<select id="pcbZoom">${[4,6,8,12,16].map(v=>`<option value="${v}" ${pcbScale===v?'selected':''}>${v*12.5}%</option>`).join('')}</select></label><button class="button" id="pcbBoxSelect" aria-pressed="${pcbSelectMode}">Box select</button><button class="button" id="pcbClearSelection">Clear selection</button><span id="pcbSelectionCount"></span><button class="button" id="pcbDownload">Export PCB sketch</button><button class="button" disabled title="Requires verified footprints, copper routing, drills, and manufacturing checks">Gerber export · planned</button></div><div class="pcb-layout"><aside class="pcb-palette"><h3>Shared component library</h3><p>Drag onto the board or click ＋.</p>${allLibraryParts().filter(n=>categories[n.category][2]).map(n=>libraryCardHTML(n)).join('')}<h3>From this project</h3>${project.nodes.filter(n=>categories[n.category][2]).map(n=>libraryCardHTML(n,'project')).join('')||'<p>No electronic parts yet.</p>'}</aside><div><div class="pcb-scroll"><div id="pcbBoard" style="width:${pcb.width*pcbScale}px;height:${pcb.height*pcbScale}px;background-size:${pcbScale*5}px ${pcbScale*5}px"><span class="pcb-board-label">${esc(pcb.name)} · ${pcb.width} × ${pcb.height} mm</span>${pcb.placements.map(p=>{const size=placementSize(p);return `<button class="pcb-part ${pcbSelected===p.id||pcbSelection.has(p.id)?'selected':''}" data-pcb-part="${esc(p.id)}" style="left:${p.x*pcbScale}px;top:${p.y*pcbScale}px;width:${size.width*pcbScale}px;height:${size.height*pcbScale}px"><strong>${esc(p.component.name)}</strong><small>${p.rotation}° · generic block</small></button>`;}).join('')}</div></div><div id="pcbPartDetails"></div></div></div>`;
   $('#pcbBack').onclick=()=>showWorkbench('map');
   $('#pcbName').onchange=e=>{project.pcb=project.pcb||newPcb();project.pcb.name=e.target.value.slice(0,200);persist();renderPcb();};
   $('#pcbResize').onclick=()=>{try{resizePcb(Number($('#pcbWidth').value),Number($('#pcbHeight').value));persist();renderPcb();}catch(e){toast(e.message);}};
@@ -83,7 +83,7 @@ function renderPcb(){
   $('#pcbDownload').onclick=()=>downloadWorkbenchJSON({format:'partmap.pcb-sketch',version:1,pcb:project.pcb||newPcb(),manufacturingReady:false},'partmap-pcb-sketch.json');
   bindLibraryCards(workspace,(source,id)=>{try{pcbSelected=addPcbPlacement(source,id).id;persist();renderPcb();}catch(e){toast(e.message);}});
   bindWorkbenchDrop($('#pcbBoard'),(data,e)=>{const r=$('#pcbBoard').getBoundingClientRect();pcbSelected=addPcbPlacement(data.source,data.id,(e.clientX-r.left)/pcbScale,(e.clientY-r.top)/pcbScale).id;persist();renderPcb();});
-  bindPcbDragging();renderPcbPartDetails();
+  $('#pcbBoxSelect').onclick=()=>{pcbSelectMode=!pcbSelectMode;$('#pcbBoxSelect').setAttribute('aria-pressed',String(pcbSelectMode));$('#pcbBoard').classList.toggle('box-select-mode',pcbSelectMode);};$('#pcbClearSelection').onclick=()=>{pcbSelection.clear();refreshPcbSelection();};$('#pcbBoard').classList.toggle('box-select-mode',pcbSelectMode);bindPcbDragging();renderPcbPartDetails();refreshPcbSelection();
 }
 function renderPcbPartDetails(){
   const p=project.pcb?.placements.find(p=>p.id===pcbSelected),target=$('#pcbPartDetails');if(!target)return;
@@ -93,11 +93,38 @@ function renderPcbPartDetails(){
   $('#pcbPartResize').onclick=()=>{try{const next=structuredClone(project.pcb),part=next.placements.find(n=>n.id===p.id);part.width=Number($('#pcbPartWidth').value);part.height=Number($('#pcbPartHeight').value);validatePcb(next);project.pcb=next;persist();renderPcb();}catch(e){toast(e.message);}};
   $('#pcbRemove').onclick=()=>{project.pcb.placements=project.pcb.placements.filter(n=>n.id!==p.id);pcbSelected=null;persist();renderPcb();};
 }
+function refreshPcbSelection(){
+  for(const id of pcbSelection)if(!project.pcb?.placements.some(p=>p.id===id))pcbSelection.delete(id);
+  $$('#pcbBoard [data-pcb-part]').forEach(el=>el.classList.toggle('multi-selected',pcbSelection.has(el.dataset.pcbPart)));
+  if($('#pcbSelectionCount'))$('#pcbSelectionCount').textContent=pcbSelection.size+' selected';
+}
 function bindPcbDragging(){
-  const board=$('#pcbBoard');let drag=null;
-  board.onpointerdown=e=>{const handle=e.target.closest('[data-pcb-part]');if(!handle||e.button!==0)return;const p=project.pcb.placements.find(p=>p.id===handle.dataset.pcbPart);pcbSelected=p.id;drag={p,x:e.clientX,y:e.clientY,original:{x:p.x,y:p.y},pointer:e.pointerId,handle};board.setPointerCapture(e.pointerId);e.preventDefault();renderPcbPartDetails();};
-  board.onpointermove=e=>{if(!drag||drag.pointer!==e.pointerId)return;movePcbPlacement(drag.p,drag.original.x+(e.clientX-drag.x)/pcbScale,drag.original.y+(e.clientY-drag.y)/pcbScale);drag.handle.style.left=drag.p.x*pcbScale+'px';drag.handle.style.top=drag.p.y*pcbScale+'px';};
-  const end=e=>{if(!drag||drag.pointer!==e.pointerId)return;if(e.type==='pointercancel')Object.assign(drag.p,drag.original);drag=null;if(board.hasPointerCapture(e.pointerId))board.releasePointerCapture(e.pointerId);persist();renderPcb();};board.onpointerup=end;board.onpointercancel=end;board.onlostpointercapture=end;
+  const board=$('#pcbBoard'),scroll=board.closest('.pcb-scroll');let gesture=null;
+  const point=e=>{const r=board.getBoundingClientRect();return {x:(e.clientX-r.left)/pcbScale,y:(e.clientY-r.top)/pcbScale};};
+  board.onpointerdown=e=>{
+    if(e.button!==0)return;const handle=e.target.closest('[data-pcb-part]');
+    if(handle){const id=handle.dataset.pcbPart;pcbSelected=id;
+      if(e.ctrlKey||e.metaKey||e.shiftKey){if(pcbSelection.has(id))pcbSelection.delete(id);else pcbSelection.add(id);refreshPcbSelection();e.preventDefault();return;}
+      if(!pcbSelection.has(id)){pcbSelection.clear();pcbSelection.add(id);}
+      const items=project.pcb.placements.filter(p=>pcbSelection.has(p.id)).map(p=>({id:p.id,x:p.x,y:p.y,...placementSize(p)}));gesture={kind:'move',pointer:e.pointerId,start:point(e),items};refreshPcbSelection();renderPcbPartDetails();
+    }else if(pcbSelectMode||e.shiftKey){gesture={kind:'box',pointer:e.pointerId,start:point(e),original:new Set(pcbSelection),additive:e.shiftKey||e.ctrlKey||e.metaKey};if(!gesture.additive)pcbSelection.clear();}
+    else gesture={kind:'pan',pointer:e.pointerId,x:e.clientX,y:e.clientY,left:scroll.scrollLeft,top:scroll.scrollTop};
+    board.setPointerCapture(e.pointerId);e.preventDefault();
+  };
+  board.onpointermove=e=>{
+    if(!gesture||gesture.pointer!==e.pointerId)return;const g=gesture;e.preventDefault();
+    if(g.kind==='pan'){scroll.scrollLeft=g.left-(e.clientX-g.x);scroll.scrollTop=g.top-(e.clientY-g.y);return;}
+    const pos=point(e);
+    if(g.kind==='box'){const rect=selectionBounds(g.start,pos);pcbSelection.clear();if(g.additive)g.original.forEach(id=>pcbSelection.add(id));for(const p of project.pcb?.placements||[])if(boxesIntersect(rect,{x:p.x,y:p.y,...placementSize(p)}))pcbSelection.add(p.id);paintSelectionBox(board,rect,pcbScale);refreshPcbSelection();return;}
+    const delta=groupDelta(g.items,Math.round(pos.x-g.start.x),Math.round(pos.y-g.start.y),0,0,project.pcb.width,project.pcb.height);
+    for(const item of g.items){const p=project.pcb.placements.find(p=>p.id===item.id);p.x=item.x+delta.x;p.y=item.y+delta.y;const el=board.querySelector(`[data-pcb-part="${CSS.escape(item.id)}"]`);el.style.left=p.x*pcbScale+'px';el.style.top=p.y*pcbScale+'px';}
+  };
+  const end=e=>{
+    if(!gesture||gesture.pointer!==e.pointerId)return;const g=gesture;gesture=null;const cancel=e.type==='pointercancel'||e.type==='lostpointercapture';
+    if(cancel&&g.kind==='move')for(const item of g.items){const p=project.pcb.placements.find(p=>p.id===item.id);p.x=item.x;p.y=item.y;}
+    if(cancel&&g.kind==='box'){pcbSelection.clear();g.original.forEach(id=>pcbSelection.add(id));}
+    board.querySelector('.selection-box')?.remove();if(board.hasPointerCapture(e.pointerId))board.releasePointerCapture(e.pointerId);if(g.kind==='move'&&!cancel)persist();renderPcb();
+  };board.onpointerup=end;board.onpointercancel=end;board.onlostpointercapture=end;
 }
 function bindWorkbenchDrop(target,handler){
   target.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes(PART_DRAG_TYPE)){e.preventDefault();e.dataTransfer.dropEffect='copy';target.classList.add('library-drop-active');}});

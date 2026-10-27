@@ -236,15 +236,17 @@ renderInspector=function(){
 function boardGeometry(n) {
   const populated=n.pinSections.filter(s=>n.pins.some(p=>p.section===s.id));
   const channels=populated.filter(s=>s.side==='channel'),terminals=populated.filter(s=>s.style==='terminal-block');
-  const banks=n.pinSections.filter(s=>s.style==='servo-bank');
-  const width=Math.max(banks.length?780:channels.length>4||populated.some(s=>s.side==='right')?600:280,...terminals.map(s=>n.pins.filter(p=>p.section===s.id).length*54+24)),blocks=[],pins=new Map();let y=72;
-  function addTerminal(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*54,h=86,x=12;blocks.push({s,x,y,w,h,kind:'screw-terminal',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*54+27,y:y+50,side:s.side==='top'?'top':'bottom',escapeX:x+i*54+27}));y+=h+14;}
+  const banks=n.pinSections.filter(s=>s.style==='servo-bank'),edgeHeaders=populated.filter(s=>['top','bottom'].includes(s.side)&&s.style!=='terminal-block');
+  const width=Math.max(banks.length?780:channels.length>4||populated.some(s=>s.side==='right')?600:280,...terminals.map(s=>n.pins.filter(p=>p.section===s.id).length*54+24),...edgeHeaders.map(s=>n.pins.filter(p=>p.section===s.id).length*46+24)),blocks=[],pins=new Map();let y=72;
+  function addTerminal(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*54,h=86,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'screw-terminal',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*54+27,y:y+50,side:s.side==='top'?'top':'bottom',escapeX:x+i*54+27}));y+=h+14;}
+  function addEdgeHeader(s){const list=n.pins.filter(p=>p.section===s.id),w=list.length*46,h=72,x=(width-w)/2;blocks.push({s,x,y,w,h,kind:'edge-header',list});list.forEach((p,i)=>pins.set(p.id,{x:x+i*46+23,y:y+49,side:s.side,escapeX:x+i*46+23}));y+=h+14;}
   for(const s of terminals.filter(s=>s.side==='top'))addTerminal(s);
+  for(const s of edgeHeaders.filter(s=>s.side==='top'))addEdgeHeader(s);
   function addBlock(s,x,top,w,kind='header'){
     const list=n.pins.filter(p=>p.section===s.id),h=26+list.length*24;blocks.push({s,x,y:top,w,h,kind,list});
     list.forEach((p,i)=>pins.set(p.id,{x:x+(s.side==='right'?w+1:3),y:top+41+i*24,side:s.side==='right'?'right':'left'}));return h;
   }
-  const headers=populated.filter(s=>!['channel','bottom'].includes(s.side)&&s.style!=='terminal-block'),left=headers.filter(s=>s.side!=='right'),right=headers.filter(s=>s.side==='right');
+  const headers=populated.filter(s=>!['channel','top','bottom'].includes(s.side)&&s.style!=='terminal-block'),left=headers.filter(s=>s.side!=='right'),right=headers.filter(s=>s.side==='right');
   if(right.length){let ly=y,ry=y;for(const s of left)ly+=addBlock(s,12,ly,(width-36)/2)+12;for(const s of right)ry+=addBlock(s,width/2+6,ry,(width-36)/2)+12;y=Math.max(ly,ry);}
   else for(const s of left)y+=addBlock(s,12,y,width-24)+12;
   const groups=[...banks.map(bank=>({title:bank.name,list:channels.filter(s=>s.parent===bank.id),bank:true})),{title:'Actuator channels',list:channels.filter(s=>!banks.some(b=>b.id===s.parent)),bank:false}];
@@ -255,10 +257,10 @@ function boardGeometry(n) {
     }
   }
   for(const s of terminals.filter(s=>s.side!=='top'))addTerminal(s);
-  for(const s of populated.filter(s=>s.side==='bottom'&&s.style!=='terminal-block'))y+=addBlock(s,12,y,width-24,'terminal')+12;
+  for(const s of edgeHeaders.filter(s=>s.side==='bottom'))addEdgeHeader(s);
   if(!n.pins.length)y+=55;return {width,height:y+15,blocks,pins};
 }
-function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>['group-label','bank-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${b.kind==='screw-terminal'?`style="left:${i*54}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
+function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id||mapSelection.has(n.id)?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>['group-label','bank-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${['screw-terminal','edge-header'].includes(b.kind)?`style="left:${i*(b.kind==='screw-terminal'?54:46)}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
 let latestGeometry={positions:new Map(),sizes:new Map(),width:700,height:350};
 function mapMode(){return 'tree';}
 function routePhysicalWire(a,b,ap,bp,ag,bg,index){
@@ -278,9 +280,10 @@ renderGraph=function(){
   else{const {children}=treePositions(list);edges=[...children].flatMap(([p,ns])=>p==='__product__'?[]:ns.map(n=>{const a=positions.get(p),b=positions.get(n.id);return `<path d="M ${a.x+210} ${a.y+45} C ${a.x+235} ${a.y+45},${b.x-25} ${b.y+45},${b.x} ${b.y+45}" fill="none" stroke="#b9c9b0" stroke-width="1.5"/>`;})).join('');}
   const width=Math.max(350,...list.map(n=>positions.get(n.id).x+sizes.get(n.id).width+100)),height=Math.max(280,...list.map(n=>positions.get(n.id).y+sizes.get(n.id).height+100));latestGeometry={positions,sizes,width,height};
   $('#graph').style.width=width*zoom+'px';$('#graph').style.height=height*zoom+'px';$('#nodes').style.width=width+'px';$('#nodes').style.height=height+'px';$('#nodes').style.transform=`scale(${zoom})`;$('#nodes').style.transformOrigin='0 0';const svg=$('#edges');svg.style.width=width+'px';svg.style.height=height+'px';svg.style.transform=`scale(${zoom})`;svg.style.transformOrigin='0 0';svg.innerHTML=edges;
-  $('#nodes').innerHTML=list.map(n=>wiring?physicalBoardHTML(n,geo.get(n.id),positions.get(n.id)):`<button class="node ${selected===n.id?'selected':''}" data-node="${esc(n.id)}" data-drag="${esc(n.id)}" data-category="${esc(n.category)}" style="left:${positions.get(n.id).x}px;top:${positions.get(n.id).y}px;width:210px;height:90px"><span class="node-icon">${categories[n.category][1]}</span><span><strong>${esc(n.name)}</strong><small>${esc(categories[n.category][0])}</small><span class="qty">${n.quantity} ${n.quantity===1?'unit':'units'} · drag to move</span></span></button>`).join('')||'<p class="muted" style="padding:40px">No components in this view.</p>';
-  $$('[data-node],[data-select-board]').forEach(b=>b.onclick=()=>{if(performance.now()<ignoreClickUntil)return;selected=b.dataset.node||b.dataset.selectBoard;renderGraph();renderInspector();});$$('[data-pin-device]').forEach(b=>b.onclick=()=>{selected=b.dataset.pinDevice;renderInspector();openConnection(node(selected),b.dataset.pinId);});$('#zoomValue').textContent=Math.round(zoom*100)+'%';if($('#zoomRange'))$('#zoomRange').value=Math.round(zoom*100);
+  $('#nodes').innerHTML=list.map(n=>wiring?physicalBoardHTML(n,geo.get(n.id),positions.get(n.id)):`<button class="node ${selected===n.id||mapSelection.has(n.id)?'selected':''}" data-node="${esc(n.id)}" data-drag="${esc(n.id)}" data-category="${esc(n.category)}" style="left:${positions.get(n.id).x}px;top:${positions.get(n.id).y}px;width:210px;height:90px"><span class="node-icon">${categories[n.category][1]}</span><span><strong>${esc(n.name)}</strong><small>${esc(categories[n.category][0])}</small><span class="qty">${n.quantity} ${n.quantity===1?'unit':'units'} · drag to move</span></span></button>`).join('')||'<p class="muted" style="padding:40px">No components in this view.</p>';
+  $$('[data-node],[data-select-board]').forEach(b=>b.onclick=()=>{if(performance.now()<ignoreClickUntil)return;selected=b.dataset.node||b.dataset.selectBoard;if(!mapSelection.has(selected)){mapSelection.clear();mapSelection.add(selected);}renderGraph();renderInspector();});$$('[data-pin-device]').forEach(b=>b.onclick=()=>{selected=b.dataset.pinDevice;renderInspector();openConnection(node(selected),b.dataset.pinId);});$('#zoomValue').textContent=Math.round(zoom*100)+'%';if($('#zoomRange'))$('#zoomRange').value=Math.round(zoom*100);
   $$('[data-wire-key]').forEach(el=>{const open=()=>openWireActions(el.dataset.wireKey);el.onclick=open;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};});
+  refreshMapSelection();
   $('.canvas-caption').innerHTML=wiring?'PHYSICAL PIN WIRING <span>Shared positions · drag titles · click pins or wires</span>':'PRODUCT ARCHITECTURE <span>Drag components to arrange</span>';$('.canvas-footer > span').textContent=wiring?'Lines connect specific physical pin IDs':'Lines show assembly relationships';$('#canvas').classList.toggle('wiring-canvas',wiring);
 };
 function setMapZoom(value,point=null){
@@ -289,34 +292,72 @@ function setMapZoom(value,point=null){
 }
 function fitMap(){renderGraph();const c=$('#canvas');zoom=Math.max(.1,Math.min(1,(c.clientWidth-16)/latestGeometry.width,(c.clientHeight-105)/latestGeometry.height));renderGraph();c.scrollTo(0,0);}
 setView=function(v){view=v;$('#fullView').classList.toggle('selected',v==='full');$('#electronicsView').classList.toggle('selected',v==='electronics');$('#wiringView').classList.toggle('selected',v==='wiring');$$('[data-filter]').forEach(c=>c.disabled=v!=='full'&&!categories[c.dataset.filter][2]);renderGraph();fitMap();};
-function moveComponent(id,mode,x,y){const n=node(id);if(!n)return;n.positions=n.positions||{};delete n.positions.wiring;n.positions.tree={x:Math.round(Math.max(10,Math.min(100000,x))),y:Math.round(Math.max(10,Math.min(100000,y)))};}
+function moveComponent(id,mode,x,y){const n=node(id);if(!n)return;n.positions=n.positions||{};delete n.positions.wiring;n.positions.tree={x:Math.max(10,Math.min(100000,x)),y:Math.max(10,Math.min(100000,y))};}
 let dragState=null,ignoreClickUntil=0;
+const mapSelection=new Set();let mapSelectMode=false;
   function mapWheelAction(e,height){
     const unit=e.deltaMode===1?16:e.deltaMode===2?height:1,dx=e.deltaX*unit,dy=e.deltaY*unit;
     if(e.shiftKey)return {x:dx||dy,y:0};
     if(Math.abs(dx)>Math.abs(dy))return {x:dx,y:dy};
     return {scale:Math.exp(-Math.max(-500,Math.min(500,dy))*.002)};
   }
-function enableMapDragging(){
-    const canvas=$('#canvas');let pan=null;
-    const finishPan=e=>{if(!pan||e.pointerId!==pan.pointer)return;pan=null;canvas.classList.remove('is-panning');if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);};
-    canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;const handle=e.target.closest('[data-drag]');if(!handle){if(e.target.closest('.wire-interactive,.node,.physical-board,button,a,input,select,textarea,.canvas-caption,.canvas-footer'))return;pan={pointer:e.pointerId,x:e.clientX,y:e.clientY,left:canvas.scrollLeft,top:canvas.scrollTop};canvas.setPointerCapture(e.pointerId);canvas.classList.add('is-panning');e.preventDefault();return;}const id=handle.dataset.drag,pos=latestGeometry.positions.get(id);if(!pos)return;dragState={id,mode:mapMode(),pointer:e.pointerId,startX:e.clientX,startY:e.clientY,origin:{...pos},saved:structuredClone(node(id).positions||{}),moved:false};canvas.setPointerCapture(e.pointerId);});
-    canvas.addEventListener('pointermove',e=>{if(!pan||e.pointerId!==pan.pointer)return;e.preventDefault();canvas.scrollLeft=pan.left-(e.clientX-pan.x);canvas.scrollTop=pan.top-(e.clientY-pan.y);});
-    canvas.addEventListener('pointerup',finishPan);canvas.addEventListener('pointercancel',finishPan);canvas.addEventListener('lostpointercapture',finishPan);
-  canvas.addEventListener('pointermove',e=>{if(!dragState||e.pointerId!==dragState.pointer)return;const dx=e.clientX-dragState.startX,dy=e.clientY-dragState.startY;if(!dragState.moved&&Math.hypot(dx,dy)<4)return;dragState.moved=true;e.preventDefault();moveComponent(dragState.id,dragState.mode,dragState.origin.x+dx/zoom,dragState.origin.y+dy/zoom);renderGraph();});
-  canvas.addEventListener('pointerup',e=>{if(!dragState||e.pointerId!==dragState.pointer)return;const state=dragState;dragState=null;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);selected=state.id;ignoreClickUntil=performance.now()+250;if(state.moved)changed(`Moved ${node(state.id).name} on ${state.mode} map`);else renderGraph();renderInspector();});
-  canvas.addEventListener('pointercancel',()=>{if(dragState){node(dragState.id).positions=dragState.saved;dragState=null;renderGraph();}});
-    canvas.addEventListener('wheel',e=>{e.preventDefault();const action=mapWheelAction(e,canvas.clientHeight);if(action.scale!==undefined)setMapZoom(zoom*action.scale,{x:e.clientX,y:e.clientY});else{canvas.scrollLeft+=action.x;canvas.scrollTop+=action.y;}},{passive:false});
+function selectionBounds(a,b){return {x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),width:Math.abs(a.x-b.x),height:Math.abs(a.y-b.y)};}
+function boxesIntersect(a,b){return a.x<=b.x+b.width&&a.x+a.width>=b.x&&a.y<=b.y+b.height&&a.y+a.height>=b.y;}
+function groupDelta(items,dx,dy,minX=10,minY=10,maxX=100000,maxY=100000){return {x:Math.max(minX-Math.min(...items.map(p=>p.x)),Math.min(dx,maxX-Math.max(...items.map(p=>p.x+(p.width||0))))),y:Math.max(minY-Math.min(...items.map(p=>p.y)),Math.min(dy,maxY-Math.max(...items.map(p=>p.y+(p.height||0)))))};}
+function paintSelectionBox(parent,rect,scale){let box=parent.querySelector('.selection-box');if(!box){box=document.createElement('div');box.className='selection-box';parent.append(box);}Object.assign(box.style,{left:rect.x*scale+'px',top:rect.y*scale+'px',width:rect.width*scale+'px',height:rect.height*scale+'px'});}
+function refreshMapSelection(){
+  for(const id of mapSelection)if(!node(id))mapSelection.delete(id);
+  $$('[data-node]').forEach(el=>el.classList.toggle('multi-selected',mapSelection.has(el.dataset.node)));
+  $$('[data-select-board]').forEach(el=>el.closest('.physical-board').classList.toggle('multi-selected',mapSelection.has(el.dataset.selectBoard)));
+  if($('#mapSelectionCount'))$('#mapSelectionCount').textContent=[...mapSelection].filter(id=>latestGeometry.positions.has(id)).length+' selected';
 }
+function enableMapDragging(){
+  const canvas=$('#canvas');let gesture=null;
+  const point=e=>{const r=$('#graph').getBoundingClientRect();return {x:(e.clientX-r.left)/zoom,y:(e.clientY-r.top)/zoom};};
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;const handle=e.target.closest('[data-drag]');
+    if(handle){const id=handle.dataset.drag;if(!latestGeometry.positions.has(id))return;selected=id;
+      if(e.ctrlKey||e.metaKey||e.shiftKey){if(mapSelection.has(id))mapSelection.delete(id);else mapSelection.add(id);ignoreClickUntil=performance.now()+500;refreshMapSelection();e.preventDefault();return;}
+      if(!mapSelection.has(id)){mapSelection.clear();mapSelection.add(id);}
+      const items=[...mapSelection].filter(id=>latestGeometry.positions.has(id)).map(id=>({id,...latestGeometry.positions.get(id),saved:structuredClone(node(id).positions||{})}));
+      gesture={kind:'move',pointer:e.pointerId,start:point(e),items,moved:false};refreshMapSelection();
+    }else{
+      if(e.target.closest('.wire-interactive,.node,.physical-board,button,a,input,select,textarea,.canvas-caption,.canvas-footer'))return;
+      if(mapSelectMode||e.shiftKey){gesture={kind:'box',pointer:e.pointerId,start:point(e),original:new Set(mapSelection),additive:e.shiftKey||e.ctrlKey||e.metaKey};if(!gesture.additive)mapSelection.clear();}
+      else{gesture={kind:'pan',pointer:e.pointerId,x:e.clientX,y:e.clientY,left:canvas.scrollLeft,top:canvas.scrollTop};canvas.classList.add('is-panning');}
+    }
+    canvas.setPointerCapture(e.pointerId);e.preventDefault();
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!gesture||e.pointerId!==gesture.pointer)return;e.preventDefault();const g=gesture;
+    if(g.kind==='pan'){canvas.scrollLeft=g.left-(e.clientX-g.x);canvas.scrollTop=g.top-(e.clientY-g.y);return;}
+    const p=point(e);
+    if(g.kind==='box'){const rect=selectionBounds(g.start,p);mapSelection.clear();if(g.additive)g.original.forEach(id=>mapSelection.add(id));for(const [id,pos] of latestGeometry.positions)if(boxesIntersect(rect,{...pos,...latestGeometry.sizes.get(id)}))mapSelection.add(id);paintSelectionBox($('#graph'),rect,zoom);refreshMapSelection();return;}
+    const dx=p.x-g.start.x,dy=p.y-g.start.y;if(!g.moved&&Math.hypot(dx*zoom,dy*zoom)<4)return;g.moved=true;const delta=groupDelta(g.items,dx,dy);for(const item of g.items)moveComponent(item.id,'tree',item.x+delta.x,item.y+delta.y);renderGraph();refreshMapSelection();
+  });
+  const finish=e=>{
+    if(!gesture||e.pointerId!==gesture.pointer)return;const g=gesture;gesture=null;const cancel=e.type==='pointercancel'||e.type==='lostpointercapture';
+    if(cancel&&g.kind==='move')g.items.forEach(item=>node(item.id).positions=item.saved);
+    if(cancel&&g.kind==='box'){mapSelection.clear();g.original.forEach(id=>mapSelection.add(id));}
+    $('#graph').querySelector('.selection-box')?.remove();canvas.classList.remove('is-panning');if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
+    ignoreClickUntil=performance.now()+300;
+    if(g.kind==='move'){if(g.moved&&!cancel)changed(`Moved ${g.items.length} component(s) as a group`);else renderGraph();renderInspector();}
+    refreshMapSelection();
+  };
+  ['pointerup','pointercancel','lostpointercapture'].forEach(type=>canvas.addEventListener(type,finish));
+  canvas.addEventListener('wheel',e=>{if(gesture)return;e.preventDefault();const action=mapWheelAction(e,canvas.clientHeight);if(action.scale!==undefined)setMapZoom(zoom*action.scale,{x:e.clientX,y:e.clientY});else{canvas.scrollLeft+=action.x;canvas.scrollTop+=action.y;}},{passive:false});
+}
+
 differences=function(){const before=new Map((project.baseline||[]).map(n=>[n.id,n])),after=new Map(project.nodes.map(n=>[n.id,n]));const sig=n=>JSON.stringify(Object.fromEntries(Object.entries(n).filter(([k])=>!['attachments','positions'].includes(k)).sort(([a],[b])=>a.localeCompare(b))))+JSON.stringify((n.attachments||[]).map(a=>[a.name,a.size]));return {added:project.nodes.filter(n=>!before.has(n.id)).map(n=>({id:n.id,name:n.name,category:n.category})),removed:[...before.values()].filter(n=>!after.has(n.id)).map(n=>({id:n.id,name:n.name,category:n.category,connections:n.connections||[]})),modified:project.nodes.filter(n=>before.has(n.id)&&sig(n)!==sig(before.get(n.id))).map(n=>({id:n.id,name:n.name,before:before.get(n.id),after:n}))};};
 brief=function(){return originalBrief().replace('Schema: Partmap 1.0','Schema: Partmap 2.0')+'\n\n## Physical pin inventories (stable IDs)\n'+project.nodes.filter(n=>n.pins.length).map(n=>`### ${n.name} [component ${n.id}]\n`+n.pins.map(p=>`- ${pinLabel(n,p)} [pin ${p.id}]: ${p.type}${p.notes?' — '+p.notes:''}`).join('\n')).join('\n\n')+'\n\nRepeated labels are distinct physical pins. Do not assume pins in separate headers or channels are electrically common without verifying the device. Component positions are visual layout only.';};
 suggestions=function(){const result=[];for(const n of project.nodes.filter(n=>categories[n.category][2])){if(!n.model)result.push(`${n.name}: record an exact model and revision.`);if(!n.voltage)result.push(`${n.name}: verify power and logic levels.`);if(!wiresFor(n).length)result.push(`${n.name}: record signal, power, and ground wiring.`);if(n.pinSections.some(s=>s.side==='channel'))result.push(`${n.name}: distinguish logic VCC from actuator V+ and verify channel current and common-ground requirements.`);}const endpointCounts=new Map();for(const w of wireRecords())for(const [n,p] of [[w.source,w.connection.localPinId],[w.target,w.connection.remotePinId]]){const key=JSON.stringify([n.id,p]);if(!endpointCounts.has(key))endpointCounts.set(key,{n,p,count:0});endpointCounts.get(key).count++;}for(const {n,p,count} of endpointCounts.values())if(count>1)result.push(`${n.name} / ${pinLabel(n,n.pins.find(x=>x.id===p))} has ${count} connections; verify the intended shared connection.`);return result;};
 function initializeHardware(){
   const pinInput=$('[name=pinNames]');pinInput.closest('label').insertAdjacentHTML('beforebegin','<label>Pin layout preset<select name="pinPreset" id="pinPreset"><option value="custom">Custom pin sections</option><option value="servo16">16-channel PWM driver: left/right headers + channels + power</option></select></label>');pinInput.placeholder='Left header::GND; Left header::3.3V\nRight header::GND; Right header::3.3V';pinInput.closest('label').querySelector('small').textContent='Use Section::Pin for separate headers. Repeated labels are allowed; each physical pin has its own ID.';
   $('#componentForm').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{const n={id:uid(),parent:f.parent||null,name:f.name.trim(),category:f.category,quantity:Number(f.quantity),model:f.model,notes:f.notes,ready:false,voltage:'',interface:'',firmware:'',pins:pinList(f.pinNames),pinSections:[],connections:[],attachments:[]};normalizeNodePins(n);if(f.pinPreset==='servo16')applyServoPreset(n);validatePhysicalNodes([n]);if(categories[n.category][2])addDeviceCopies(n,n.quantity);else{if(project.nodes.length>=300)throw Error('Maximum 300 components.');project.nodes.push(n);}selected=n.id;enabled.add(n.category);setView(view);changed(`Added ${n.name} as separate device instance(s)`);renderInspector();$('#componentDialog').close();}catch(err){toast(err.message);}};
-    const controls=document.createElement('div');controls.className='map-controls';controls.innerHTML='<span class="map-help">Wheel: zoom · Shift + wheel: scroll sideways · Drag empty space: pan</span><div id="visibleZoom"></div><button id="autoArrange" class="button">Auto arrange</button><button id="expandMap" class="button">Expand map</button>';
+    const controls=document.createElement('div');controls.className='map-controls';controls.innerHTML='<span class="map-help">Wheel: zoom · Shift + drag: box select · Drag empty space: pan</span><button id="mapSelectToggle" class="button" aria-pressed="false">Box select</button><button id="mapClearSelection" class="button">Clear selection</button><span id="mapSelectionCount">0 selected</span><div id="visibleZoom"></div><button id="autoArrange" class="button">Auto arrange</button><button id="expandMap" class="button">Expand map</button>';
   $('#canvas').before(controls);$('#visibleZoom').append($('.canvas-footer div'));const range=document.createElement('input');range.type='range';range.min='10';range.max='300';range.step='5';range.id='zoomRange';range.setAttribute('aria-label','Map zoom');$('#zoomValue').after(range);range.oninput=()=>setMapZoom(Number(range.value)/100);$('#zoomOut').onclick=()=>setMapZoom(zoom/1.2);$('#zoomIn').onclick=()=>setMapZoom(zoom*1.2);$('#fitBtn').onclick=fitMap;
   $('#autoArrange').onclick=()=>{for(const n of project.nodes)if(n.positions){delete n.positions.tree;delete n.positions.wiring;};changed(`Auto-arranged ${mapMode()} map`);fitMap();};$('#expandMap').onclick=()=>{const expanded=$('.map-panel').classList.toggle('expanded');$('#expandMap').textContent=expanded?'Close expanded map':'Expand map';fitMap();};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('.map-panel').classList.contains('expanded')){$('.map-panel').classList.remove('expanded');$('#expandMap').textContent='Expand map';fitMap();}});
+  $('#mapSelectToggle').onclick=()=>{mapSelectMode=!mapSelectMode;$('#mapSelectToggle').setAttribute('aria-pressed',String(mapSelectMode));$('#canvas').classList.toggle('box-select-mode',mapSelectMode);};$('#mapClearSelection').onclick=()=>{mapSelection.clear();refreshMapSelection();};
   enableMapDragging();render();
 }
 initializeHardware();
