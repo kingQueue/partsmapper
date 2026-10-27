@@ -32,7 +32,8 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Parts readiness checklist for electronics, motors, printed parts, and fasteners.
 - CSV, TXT, pasted-list, and JSON imports with a preview and append/replace options.
 - Physical pin sections with separate left/right headers, channel columns, power terminals, and explicit pin-to-pin connections.
-- A 16-channel PWM layout preset with 62 pins and independent repeated labels.
+- A 16-channel PWM layout preset with four banks of four servo connectors, 62 independent pins, and a two-hole top screw terminal.
+- Configurable screw-terminal header styles, shared product/wiring coordinates, and hover/select/delete wire interactions.
 - Header organizer with header creation, drag-and-drop pin moves/reordering, and preserved wiring.
 - Independent device duplication, saved drag positions, zoom from 10% to 300%, fit, and an expanded map.
 - Component copy/paste with Ctrl+C/Ctrl+V (Command on Mac), bulk new-copy counts, and parent selection.

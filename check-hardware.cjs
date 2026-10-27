@@ -14,7 +14,7 @@ run('leftGnd.name="GROUND";syncConnectionLabels(project)');assert.ok(run('driver
 run('const copy=duplicateDevice(driver);project.nodes.push(copy)');assert.notEqual(run('driver.id'),run('copy.id'));assert.equal(run('copy.connections.length'),0);assert.notEqual(run('driver.pins[0].id'),run('copy.pins[0].id'));run('copy.pins[0].name="TEST";copy.pinSections[0].name="Independent"');assert.notEqual(run('driver.pins[0].name'),'TEST');assert.notEqual(run('driver.pinSections[0].name'),'Independent');
 const imported=run('parseParts("name,category,quantity,pins\\nServo,motor,2,PWM;V+;GND\\nScrews,fastener,4,","csv")');assert.equal(imported.nodes.length,3);assert.equal(imported.nodes.filter(n=>n.category==='motor').length,2);assert.equal(imported.nodes.find(n=>n.category==='fastener').quantity,4);
 assert.equal(run('parseParts("Board | 1 | board | | Left::GND;Right::GND").nodes[0].pins.length'),2);
-run('moveComponent(driver.id,"wiring",450,300)');const round=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(round.nodes.find(n=>n.name==='PWM driver').positions.wiring.x,450);assert.equal(round.nodes.find(n=>n.name==='PWM driver').pins.length,62);assert.ok(run('brief()').includes('Logic interface headers / Right header / GND'));
+run('moveComponent(driver.id,"wiring",450,300)');const round=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(round.nodes.find(n=>n.name==='PWM driver').positions.tree.x,450);assert.equal(round.nodes.find(n=>n.name==='PWM driver').pins.length,62);assert.ok(run('brief()').includes('Logic interface headers / Right header / GND'));
 run('const auxiliary=createHeaderSection(driver,"Auxiliary header","right");const movedPinId=leftGnd.id;const incomingSource=node("controller");saveWire(incomingSource,incomingSource.pins[0].id,driver.id,leftGnd.id);movePinToSection(driver,leftGnd.id,auxiliary.id)');
 assert.equal(run('leftGnd.id'),run('movedPinId'));assert.equal(run('leftGnd.section'),run('auxiliary.id'));assert.ok(run('driver.connections[0].local').includes('Auxiliary header'));assert.ok(run('incomingSource.connections.at(-1).remote').includes('Auxiliary header'));
 assert.equal(run('driver.connections[0].localPinId'),run('movedPinId'));assert.equal(run('incomingSource.connections.at(-1).remotePinId'),run('movedPinId'));
@@ -27,10 +27,30 @@ const regrouped=run('validate(JSON.parse(JSON.stringify(exportObject())))');asse
 assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pins[1].id=invalid.pins[0].id;validate({name:"bad",nodes:[{...invalid,connections:[]}]});}'),/Duplicate pin IDs/);
 assert.throws(()=>run('{const invalid=structuredClone(driver);invalid.pinSections[0].parent=invalid.pinSections[0].id;validatePhysicalNodes([invalid]);}'),/cycle/);
 run('project.baseline=structuredClone(project.nodes);moveComponent(driver.id,"wiring",900,700)');assert.equal(run('differences().modified.length'),0,'Visual layout must not produce firmware changes');
-run('view="wiring";renderGraph()');assert.ok(el('#nodes').innerHTML.includes('physical-board'));assert.ok(el('#nodes').innerHTML.includes('CH 15'));assert.equal(run('boardGeometry(driver).pins.size'),62);assert.equal((el('#edges').innerHTML.match(/<path/g)||[]).length,6);
+run('view="wiring";renderGraph()');assert.ok(el('#nodes').innerHTML.includes('physical-board'));assert.ok(el('#nodes').innerHTML.includes('CH 15'));assert.equal(run('boardGeometry(driver).pins.size'),62);assert.equal((el('#edges').innerHTML.match(/wire-interactive/g)||[]).length,6);
 run('removePhysicalPin(driver,leftGnd.id)');assert.equal(run('wiresFor(driver).length'),1);assert.ok(run('driver.pins.some(p=>p.id===rightGnd.id)'));
 run('removePinSection(driver,"logic")');assert.equal(run('driver.pins.length'),50);assert.equal(run('wiresFor(driver).length'),0);assert.ok(!run('driver.pinSections.some(s=>s.parent==="logic")'));
 assert.equal(run('parseParts("Board | 1 | board | | Right header::GND").nodes[0].pinSections.find(s=>s.name==="Right header").side'),'right');
+
+run('const styled=duplicateDevice(node("controller"),"Styled board");styled.pins=[];styled.pinSections=[];normalizeNodePins(styled);const servoHeader=createHeaderSection(styled,"Servo outputs","group");configureHeaderStyle(styled,servoHeader.id,"servo-bank");const screw=createHeaderSection(styled,"Power","top");configureHeaderStyle(styled,screw.id,"terminal-block",2);project.nodes.push(styled)');
+assert.equal(run('styled.pins.filter(p=>p.name==="PWM").length'),16);
+assert.equal(run('styled.pins.length'),50);
+assert.equal(run('boardGeometry(styled).blocks.filter(b=>b.kind==="bank-label").length'),4);
+assert.equal(run('boardGeometry(styled).blocks.filter(b=>b.kind==="screw-terminal").length'),1);
+assert.equal(run('boardGeometry(styled).pins.size'),50);
+run('const terminalPin=styled.pins.find(p=>p.section===screw.id);saveWire(styled,terminalPin.id,"controller",node("controller").pins[0].id);configureHeaderStyle(styled,screw.id,"terminal-block",4)');
+assert.equal(run('styled.pins.filter(p=>p.section===screw.id).length'),4);
+assert.equal(run('styled.connections[0].localPinId'),run('terminalPin.id'));
+assert.equal(run('{const reduced=structuredClone(styled);configureHeaderStyle(reduced,screw.id,"terminal-block",1);reduced.pins.filter(p=>p.section===screw.id).length}'),1);
+assert.throws(()=>run('configureHeaderStyle(structuredClone(styled),screw.id,"terminal-block",33)'),/1 to 32/);
+const styledRound=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(styledRound.nodes.find(n=>n.name==='Styled board').pinSections.find(s=>s.id===run('screw.id')).style,'terminal-block');
+run('view="full";renderGraph();const sharedPositions=JSON.stringify([...latestGeometry.positions].filter(([id])=>categories[node(id).category][2]));view="wiring";renderGraph()');
+assert.equal(run('JSON.stringify([...latestGeometry.positions])'),run('sharedPositions'),'Product and wiring must share world coordinates');
+assert.ok(el('#edges').innerHTML.includes('wire-hit'));assert.ok(el('#edges').innerHTML.includes('tabindex="0"'));
+run('moveComponent(styled.id,"wiring",1700,800);view="full";renderGraph()');assert.equal(run('latestGeometry.positions.get(styled.id).x'),1700);
+run('view="wiring";renderGraph()');assert.equal(run('latestGeometry.positions.get(styled.id).y'),800);
+run('const wireToDelete=wireRecords().find(w=>w.source.id===styled.id).key;removeWire(wireToDelete)');assert.equal(run('styled.connections.length'),0);assert.ok(run('styled.pins.some(p=>p.id===terminalPin.id)'));
+
 // Exercise navigation through the registered handlers without changing component data.
 const canvas=el('#canvas'),handlers={};let captured=null;
 Object.assign(canvas,{scrollLeft:400,scrollTop:300,clientHeight:540,addEventListener(type,fn){(handlers[type]??=[]).push(fn);},setPointerCapture(id){captured=id;},hasPointerCapture(id){return captured===id;},releasePointerCapture(){captured=null;}});
