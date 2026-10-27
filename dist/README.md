@@ -7,7 +7,7 @@ Your project is saved automatically in this browser on this device. Download a P
 1. Rename the example project and add components. Choose a parent to nest assemblies or parts.
 2. Select any node to change its category, parent, quantity, model, notes, electrical interface, firmware notes, connections, or reference files.
 3. Use category checkboxes or Electronics only to change the displayed map. Filtering never deletes components. Exports contain the whole product.
-4. Mark sourced/printed parts ready in the Parts checklist.
+4. Open Parts checklist to see which planned parts are on the map. Added parts are checked automatically. Sourcing readiness remains a separate setting in component details.
 5. Open Export project. Use AI brief for a coding assistant or Project JSON for a complete backup. Set current baseline when you want future exports to compare against the current revision. Exporting alone does not reset the baseline.
 
 Import opens a preview for CSV, TXT, pasted text, or Partmap JSON. Choose Add to current project or Replace current project, then generate the map. CSV requires a name column (aliases: part, component, description). Optional columns: id, parent, category, model, quantity (alias: qty), notes, voltage, interface, firmware, ready, pins. Separate pin names with semicolons. Parent values can reference an ID or a unique component name in the imported list. Category values: board, sensor, motor, power, peripheral, printed, fastener, mechanical. When omitted, categories are inferred from simple name rules and quantities default to 1. Review categories in the preview. Import rejects cycles, missing or ambiguous parents, duplicate IDs or pins, invalid quantities, and invalid connection targets. Appending remaps imported IDs to preserve existing components and wiring.
@@ -82,3 +82,12 @@ Library templates and project parts carry their full nested header sections, sty
 
 
 The servo-bank visual uses four blocks of four columns by three rows. The center gap between blocks two and three carries the shared row labels PWM, V+, and GND. Each column remains its own channel and all 48 servo-header pins retain their IDs, pin labels, and wire endpoints. Hover a square pin for its channel/section label; click it to connect that exact physical pin. PCB miniatures use the same geometry.
+
+
+### Removing components and automatic checklist completion
+
+Removing a component removes only that component. Its direct children become product-root components (no parent); their descendants remain attached to those children. Connections to the removed component are removed, while connections between surviving components remain.
+
+The Parts checklist tracks map presence automatically. Every mapped component is checked. Removing it retains an unchecked checklist entry with its specifications and pin/header snapshot. Use **Add to map** to restore an independent component at the product root without restoring old wires or reparenting its former children. Adding a matching missing part (same name, category, and model) also checks its existing entry. Copies with distinct names are separate checklist items. Quantity is displayed per entry; a screw entry with quantity four is checked when that entry is present.
+
+When all nonempty checklist entries are on the map, the Parts checklist navigation item is highlighted and marked **Complete**. Removing a listed component clears that status and shows the missing count. The dashboard shows mapped entries / listed entries. This is independent of the component's sourced/ready checkbox. Planned missing items survive reload and full Project JSON exports/imports; replacing a project with an older backup or parts list starts from that imported project's checklist.

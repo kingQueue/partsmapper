@@ -29,7 +29,7 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 ## Features
 
 - Nested component trees with full product and electronics-only views.
-- Parts readiness checklist for electronics, motors, printed parts, and fasteners.
+- Automatic map-presence checklist, retained unchecked entries for removed parts, restoration, and a Complete sidebar badge.
 - CSV, TXT, pasted-list, and JSON imports with a preview and append/replace options.
 - Physical pin sections with separate left/right headers, channel columns, power terminals, and explicit pin-to-pin connections.
 - A 16-channel PWM layout preset with four banks of four servo connectors, 62 independent pins, and a two-hole top screw terminal.
@@ -57,7 +57,8 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 
 - `dist/index.html`: app structure and dialogs
 - `dist/style.css`: layout and styles
-- `dist/app.js`: component tree, checklist, persistence, and exports
+- `dist/app.js`: component tree, non-cascading component removal, persistence, and exports
+- `dist/assembly.js`: retained checklist plans, automatic map-presence status, restoration, and completion feedback
 - `dist/studio.js`: pin inventories, wiring view, and parts-list import preview
 - `dist/hardware.js`, `dist/hardware.css`: stable pin IDs, nested sections, device instances, grouped board layouts, dragging, and zoom
 - `dist/clipboard.js`, `dist/clipboard.css`: independent component snapshots, keyboard shortcuts, independent copies, and component-detail clipboard actions
