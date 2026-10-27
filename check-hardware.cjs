@@ -45,12 +45,21 @@ assert.equal(run('{const reduced=structuredClone(styled);configureHeaderStyle(re
 assert.throws(()=>run('configureHeaderStyle(structuredClone(styled),screw.id,"terminal-block",33)'),/1 to 32/);
 const styledRound=run('validate(JSON.parse(JSON.stringify(exportObject())))');assert.equal(styledRound.nodes.find(n=>n.name==='Styled board').pinSections.find(s=>s.id===run('screw.id')).style,'terminal-block');
 run('view="full";renderGraph();const sharedPositions=JSON.stringify([...latestGeometry.positions].filter(([id])=>categories[node(id).category][2]));view="wiring";renderGraph()');
-assert.equal(run('JSON.stringify([...latestGeometry.positions])'),run('sharedPositions'),'Product and wiring must share world coordinates');
+assert.equal(run('JSON.stringify([...latestGeometry.sourcePositions].filter(([id])=>categories[node(id).category][2]))'),run('sharedPositions'),'Wiring derives from product map positions');
 assert.ok(el('#edges').innerHTML.includes('wire-hit'));assert.ok(el('#edges').innerHTML.includes('tabindex="0"'));
 run('moveComponent(styled.id,"wiring",1700,800);view="full";renderGraph()');assert.equal(run('latestGeometry.positions.get(styled.id).x'),1700);
-run('view="wiring";renderGraph()');assert.equal(run('latestGeometry.positions.get(styled.id).y'),800);
+run('view="wiring";renderGraph()');assert.equal(run('latestGeometry.sourcePositions.get(styled.id).y'),800);
 run('const wireToDelete=wireRecords().find(w=>w.source.id===styled.id).key;removeWire(wireToDelete)');assert.equal(run('styled.connections.length'),0);assert.ok(run('styled.pins.some(p=>p.id===terminalPin.id)'));
 
+run('view="wiring";renderGraph();const wiringBoxes=[...latestGeometry.positions].map(([id,p])=>({id,...p,...latestGeometry.sizes.get(id)}));');
+assert.ok(run('wiringBoxes.every((a,i)=>wiringBoxes.slice(i+1).every(b=>a.x+a.width+WIRING_MARGIN<=b.x+.000001||b.x+b.width+WIRING_MARGIN<=a.x+.000001||a.y+a.height+WIRING_MARGIN<=b.y+.000001||b.y+b.height+WIRING_MARGIN<=a.y+.000001))'),'All boards must have the required margin');
+run('const layoutBeforeFilter=JSON.stringify([...latestGeometry.positions]);const invisibleId=project.nodes.find(n=>n.category==="sensor").id;enabled.delete("sensor");renderGraph()');
+assert.ok(run('JSON.parse(layoutBeforeFilter).filter(([id])=>id!==invisibleId).every(([id,p])=>!latestGeometry.positions.has(id)||JSON.stringify(latestGeometry.positions.get(id))===JSON.stringify(p))'),'Filtering does not reflow remaining boards');
+run('enabled.add("sensor");renderGraph()');
+const sourceBeforeLayout=run('JSON.stringify(project.nodes)');run('renderGraph()');assert.equal(run('JSON.stringify(project.nodes)'),sourceBeforeLayout,'Spacing must not modify saved product positions');
+run('const coincident=[{id:"a"},{id:"b"},{id:"c"}];const coincidentSource=new Map([["a",{x:20,y:20}],["b",{x:20,y:20}],["c",{x:20,y:20.001}]]);const coincidentSizes=new Map(coincident.map(n=>[n.id,{width:780,height:500}]));const separated=spacedWiringPositions(coincident,coincidentSource,coincidentSizes)');
+assert.ok(run('[...separated.values()].every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))'));
+assert.ok(run('[...separated.values()].every((a,i,all)=>all.slice(i+1).every(b=>Math.abs(a.y-b.y)>=580-.00001))'),'Coincident and near-coincident cards must separate safely');
 // Exercise navigation through the registered handlers without changing component data.
 const canvas=el('#canvas'),handlers={};let captured=null;
 Object.assign(canvas,{scrollLeft:400,scrollTop:300,clientHeight:540,addEventListener(type,fn){(handlers[type]??=[]).push(fn);},setPointerCapture(id){captured=id;},hasPointerCapture(id){return captured===id;},releasePointerCapture(){captured=null;}});
@@ -71,7 +80,7 @@ assert.equal(run('JSON.stringify(project.nodes)'),originalNodes,'Navigation must
 assert.ok(run('boxesIntersect(selectionBounds({x:100,y:100},{x:0,y:0}),{x:90,y:90,width:20,height:20})'));
 assert.equal(run('groupDelta([{x:20,y:30},{x:60,y:70}],-100,-100).x'),-10);
 assert.equal(run('groupDelta([{x:5,y:5,width:10,height:10},{x:40,y:30,width:20,height:10}],100,100,0,0,100,80).x'),40);
-run('renderInspector=()=>{};mapSelection.clear();mapSelection.add("controller");mapSelection.add("display");renderGraph();const moveOrigins=[...mapSelection].map(id=>({id,...latestGeometry.positions.get(id)}))');
+run('renderInspector=()=>{};mapSelection.clear();mapSelection.add("controller");mapSelection.add("display");renderGraph();const moveOrigins=[...mapSelection].map(id=>({id,...latestGeometry.sourcePositions.get(id)}))');
 const handle={dataset:{drag:'controller'}};
 const componentTarget={closest:s=>s==='[data-drag]'?handle:null};
 fire('pointerdown',{target:componentTarget});fire('pointermove',{clientX:330,clientY:290});fire('pointerup');

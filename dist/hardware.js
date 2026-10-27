@@ -272,19 +272,44 @@ function treePositions(list){
   const included=new Set(list.map(n=>n.id)),children=new Map([['__product__',[]]]);for(const n of list){let parent=node(n.parent);while(parent&&!included.has(parent.id))parent=node(parent.parent);const key=parent?.id||'__product__';if(!children.has(key))children.set(key,[]);children.get(key).push(n);}
   let leaf=0;const positions=new Map();function place(id,depth){const kids=children.get(id)||[],ys=kids.map(n=>place(n.id,depth+1)),y=ys.length?(ys[0]+ys.at(-1))/2:leaf++*115;if(id!=='__product__')positions.set(id,{x:30+depth*250,y:25+y});return y;}place('__product__',-1);return {positions,children};
 }
+// Expand coordinate bands while retaining product-map row/column ordering.
+const WIRING_MARGIN=80;
+function productMapPositions(){const generated=treePositions(project.nodes).positions;return new Map(project.nodes.map(n=>[n.id,{...(n.positions?.tree||n.positions?.wiring||generated.get(n.id))}]));}
+function spacedWiringPositions(nodes,source,geometry,margin=WIRING_MARGIN){
+  const anchors=new Map(nodes.map(n=>[n.id,{...source.get(n.id)}])),occupied=new Set();
+  // Coincident cards have no directional relationship; stack them deterministically.
+  for(const n of [...nodes].sort((a,b)=>a.id.localeCompare(b.id))){const p=anchors.get(n.id);while(occupied.has(JSON.stringify([p.x,p.y])))p.y+=.001;occupied.add(JSON.stringify([p.x,p.y]));}
+  const constraints={x:[],y:[]};
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+    const a=nodes[i],b=nodes[j],ap=anchors.get(a.id),bp=anchors.get(b.id),dx=bp.x-ap.x,dy=bp.y-ap.y;
+    const axis=dx===0?'y':dy===0?'x':Math.abs(dx)/250>=Math.abs(dy)/115?'x':'y';
+    const first=ap[axis]<bp[axis]?a:b,last=first===a?b:a,size=geometry.get(first.id);
+    constraints[axis].push({from:anchors.get(first.id)[axis],to:anchors.get(last.id)[axis],gap:(axis==='x'?size.width:size.height)+margin});
+  }
+  const bands={};
+  for(const axis of ['x','y']){
+    const values=[...new Set([...anchors.values()].map(p=>p[axis]))].sort((a,b)=>a-b),out=new Map(),incoming=new Map();
+    for(const c of constraints[axis]){if(!incoming.has(c.to))incoming.set(c.to,[]);incoming.get(c.to).push(c);}
+    values.forEach((v,i)=>{let next=i?out.get(values[i-1])+(v-values[i-1]):v;for(const c of incoming.get(v)||[])next=Math.max(next,out.get(c.from)+c.gap);out.set(v,next);});bands[axis]=out;
+  }
+  return new Map(nodes.map(n=>{const p=anchors.get(n.id);return [n.id,{x:bands.x.get(p.x),y:bands.y.get(p.y)}];}));
+}
 renderGraph=function(){
   const wiring=view==='wiring',list=project.nodes.filter(n=>enabled.has(n.category)&&(view==='full'||categories[n.category][2]));let positions=new Map(),sizes=new Map(),edges='';const geo=new Map();
-  const shared=treePositions(project.nodes).positions;
-  for(const n of list){positions.set(n.id,{...(n.positions?.tree||n.positions?.wiring||shared.get(n.id))});if(wiring){const g=boardGeometry(n);geo.set(n.id,g);sizes.set(n.id,{width:g.width,height:g.height});}else sizes.set(n.id,{width:210,height:90});}
+  const shared=productMapPositions();
+  if(wiring){const electronic=project.nodes.filter(n=>categories[n.category][2]);electronic.forEach(n=>geo.set(n.id,boardGeometry(n)));positions=spacedWiringPositions(electronic,shared,geo);}
+  for(const n of list){if(!wiring)positions.set(n.id,{...shared.get(n.id)});const g=wiring?geo.get(n.id):{width:210,height:90};sizes.set(n.id,{width:g.width,height:g.height});}
+  // Hidden parts influence spacing, but cannot be selected or rendered in this view.
+  positions=new Map(list.map(n=>[n.id,positions.get(n.id)]));
   if(wiring){const colors=['#74b6d3','#d0ab65','#bfa0dd','#8acba6','#d8978c'];edges=wireRecords().filter(w=>positions.has(w.source.id)&&positions.has(w.target?.id)).map((w,i)=>{const a=positions.get(w.source.id),b=positions.get(w.target.id),ag=geo.get(w.source.id),bg=geo.get(w.target.id),ap=ag.pins.get(w.connection.localPinId),bp=bg.pins.get(w.connection.remotePinId);if(!ap||!bp)return '';const d=routePhysicalWire(a,b,ap,bp,ag,bg,i),hit='M '+d.split(' L ').slice(1,-1).join(' L '),color=colors[i%colors.length];return `<g class="wire-interactive" data-wire-key="${esc(w.key)}" role="button" tabindex="0" aria-label="Edit connection ${esc(w.source.name)} to ${esc(w.target.name)}"><path class="wire-hit" d="${hit}" fill="none" stroke="transparent" stroke-width="14" vector-effect="non-scaling-stroke"/><path class="wire-line" d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round"><title>${esc(w.source.name)} / ${esc(w.connection.local)} ↔ ${esc(w.target.name)} / ${esc(w.connection.remote)}</title></path><circle cx="${a.x+ap.x}" cy="${a.y+ap.y}" r="3.5" fill="${color}"/><circle cx="${b.x+bp.x}" cy="${b.y+bp.y}" r="3.5" fill="${color}"/></g>`;}).join('');}
   else{const {children}=treePositions(list);edges=[...children].flatMap(([p,ns])=>p==='__product__'?[]:ns.map(n=>{const a=positions.get(p),b=positions.get(n.id);return `<path d="M ${a.x+210} ${a.y+45} C ${a.x+235} ${a.y+45},${b.x-25} ${b.y+45},${b.x} ${b.y+45}" fill="none" stroke="#b9c9b0" stroke-width="1.5"/>`;})).join('');}
-  const width=Math.max(350,...list.map(n=>positions.get(n.id).x+sizes.get(n.id).width+100)),height=Math.max(280,...list.map(n=>positions.get(n.id).y+sizes.get(n.id).height+100));latestGeometry={positions,sizes,width,height};
+  const width=Math.max(350,...list.map(n=>positions.get(n.id).x+sizes.get(n.id).width+100)),height=Math.max(280,...list.map(n=>positions.get(n.id).y+sizes.get(n.id).height+100));latestGeometry={positions,sizes,width,height,sourcePositions:shared};
   $('#graph').style.width=width*zoom+'px';$('#graph').style.height=height*zoom+'px';$('#nodes').style.width=width+'px';$('#nodes').style.height=height+'px';$('#nodes').style.transform=`scale(${zoom})`;$('#nodes').style.transformOrigin='0 0';const svg=$('#edges');svg.style.width=width+'px';svg.style.height=height+'px';svg.style.transform=`scale(${zoom})`;svg.style.transformOrigin='0 0';svg.innerHTML=edges;
   $('#nodes').innerHTML=list.map(n=>wiring?physicalBoardHTML(n,geo.get(n.id),positions.get(n.id)):`<button class="node ${selected===n.id||mapSelection.has(n.id)?'selected':''}" data-node="${esc(n.id)}" data-drag="${esc(n.id)}" data-category="${esc(n.category)}" style="left:${positions.get(n.id).x}px;top:${positions.get(n.id).y}px;width:210px;height:90px"><span class="node-icon">${categories[n.category][1]}</span><span><strong>${esc(n.name)}</strong><small>${esc(categories[n.category][0])}</small><span class="qty">${n.quantity} ${n.quantity===1?'unit':'units'} · drag to move</span></span></button>`).join('')||'<p class="muted" style="padding:40px">No components in this view.</p>';
   $$('[data-node],[data-select-board]').forEach(b=>b.onclick=()=>{if(performance.now()<ignoreClickUntil)return;selected=b.dataset.node||b.dataset.selectBoard;if(!mapSelection.has(selected)){mapSelection.clear();mapSelection.add(selected);}renderGraph();renderInspector();});$$('[data-pin-device]').forEach(b=>b.onclick=()=>{selected=b.dataset.pinDevice;renderInspector();openConnection(node(selected),b.dataset.pinId);});$('#zoomValue').textContent=Math.round(zoom*100)+'%';if($('#zoomRange'))$('#zoomRange').value=Math.round(zoom*100);
   $$('[data-wire-key]').forEach(el=>{const open=()=>openWireActions(el.dataset.wireKey);el.onclick=open;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};});
   refreshMapSelection();
-  $('.canvas-caption').innerHTML=wiring?'PHYSICAL PIN WIRING <span>Shared positions · drag titles · click pins or wires</span>':'PRODUCT ARCHITECTURE <span>Drag components to arrange</span>';$('.canvas-footer > span').textContent=wiring?'Lines connect specific physical pin IDs':'Lines show assembly relationships';$('#canvas').classList.toggle('wiring-canvas',wiring);
+  $('.canvas-caption').innerHTML=wiring?'PHYSICAL PIN WIRING <span>Product arrangement · spaced boards · click pins or wires</span>':'PRODUCT ARCHITECTURE <span>Drag components to arrange</span>';$('.canvas-footer > span').textContent=wiring?'Lines connect specific physical pin IDs':'Lines show assembly relationships';$('#canvas').classList.toggle('wiring-canvas',wiring);
 };
 function setMapZoom(value,point=null){
   const canvas=$('#canvas'),old=zoom,rect=canvas.getBoundingClientRect(),px=point?point.x-rect.left:canvas.clientWidth/2,py=point?point.y-rect.top:canvas.clientHeight/2;
@@ -319,7 +344,7 @@ function enableMapDragging(){
     if(handle){const id=handle.dataset.drag;if(!latestGeometry.positions.has(id))return;selected=id;
       if(e.ctrlKey||e.metaKey||e.shiftKey){if(mapSelection.has(id))mapSelection.delete(id);else mapSelection.add(id);ignoreClickUntil=performance.now()+500;refreshMapSelection();e.preventDefault();return;}
       if(!mapSelection.has(id)){mapSelection.clear();mapSelection.add(id);}
-      const items=[...mapSelection].filter(id=>latestGeometry.positions.has(id)).map(id=>({id,...latestGeometry.positions.get(id),saved:structuredClone(node(id).positions||{})}));
+      const items=[...mapSelection].filter(id=>latestGeometry.positions.has(id)).map(id=>({id,...latestGeometry.positions.get(id),product:latestGeometry.sourcePositions.get(id),saved:structuredClone(node(id).positions||{})}));
       gesture={kind:'move',pointer:e.pointerId,start:point(e),items,moved:false};refreshMapSelection();
     }else{
       if(e.target.closest('.wire-interactive,.node,.physical-board,button,a,input,select,textarea,.canvas-caption,.canvas-footer'))return;
@@ -333,7 +358,7 @@ function enableMapDragging(){
     if(g.kind==='pan'){canvas.scrollLeft=g.left-(e.clientX-g.x);canvas.scrollTop=g.top-(e.clientY-g.y);return;}
     const p=point(e);
     if(g.kind==='box'){const rect=selectionBounds(g.start,p);mapSelection.clear();if(g.additive)g.original.forEach(id=>mapSelection.add(id));for(const [id,pos] of latestGeometry.positions)if(boxesIntersect(rect,{...pos,...latestGeometry.sizes.get(id)}))mapSelection.add(id);paintSelectionBox($('#graph'),rect,zoom);refreshMapSelection();return;}
-    const dx=p.x-g.start.x,dy=p.y-g.start.y;if(!g.moved&&Math.hypot(dx*zoom,dy*zoom)<4)return;g.moved=true;const delta=groupDelta(g.items,dx,dy);for(const item of g.items)moveComponent(item.id,'tree',item.x+delta.x,item.y+delta.y);renderGraph();refreshMapSelection();
+    const dx=p.x-g.start.x,dy=p.y-g.start.y;if(!g.moved&&Math.hypot(dx*zoom,dy*zoom)<4)return;g.moved=true;const delta=groupDelta(g.items.map(item=>({...item,...item.product})),dx,dy);for(const item of g.items)moveComponent(item.id,'tree',item.product.x+delta.x,item.product.y+delta.y);renderGraph();refreshMapSelection();
   });
   const finish=e=>{
     if(!gesture||e.pointerId!==gesture.pointer)return;const g=gesture;gesture=null;const cancel=e.type==='pointercancel'||e.type==='lostpointercapture';
