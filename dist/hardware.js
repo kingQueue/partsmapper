@@ -252,7 +252,24 @@ function boardGeometry(n) {
   else for(const s of left)y+=addBlock(s,8,y,Math.min(width-16,Math.max(110,headerWidth(s))))+8;
   const groups=[...banks.map(bank=>({title:bank.name,list:channels.filter(s=>s.parent===bank.id),bank:true})),{title:'Actuator channels',list:channels.filter(s=>!banks.some(b=>b.id===s.parent)),bank:false}];
   for(const group of groups){if(!group.list.length)continue;blocks.push({kind:'group-label',title:group.title,x:8,y,w:width-16,h:18});y+=18;
-    const perRow=group.bank?16:Math.min(16,group.list.length),gap=group.bank?12:0,cw=(width-16-gap*3)/perRow;
+    if(group.bank){
+      const gap=8,centerGap=48,bankWidth=(width-16-2*gap-centerGap)/4,columnWidth=bankWidth/4;
+      for(let offset=0;offset<group.list.length;offset+=16){
+        const row=group.list.slice(offset,offset+16),rowCount=Math.max(3,...row.map(s=>n.pins.filter(p=>p.section===s.id).length)),gridTop=y+18;
+        for(let bank=0;bank<Math.ceil(row.length/4);bank++){
+          const x=8+bank*bankWidth+(bank===0?0:bank===1?gap:bank===2?gap+centerGap:2*gap+centerGap),sections=row.slice(bank*4,bank*4+4),list=[];
+          blocks.push({kind:'bank-label',title:`Bank ${Math.floor(offset/4)+bank+1} · CH ${offset+bank*4}–${offset+Math.min(bank*4+3,row.length-1)}`,x,y,w:bankWidth,h:18});
+          sections.forEach((section,col)=>n.pins.filter(p=>p.section===section.id).forEach((pin,r)=>{
+            const px=(col+.5)*columnWidth,py=(r+.5)*18;list.push({pin,x:px,y:py,channel:offset+bank*4+col});pins.set(pin.id,{x:x+px,y:gridTop+py,escapeX:x+(col+1)*columnWidth-2,side:'bottom'});
+          }));
+          blocks.push({kind:'servo-grid',s:sections[0],x,y:gridTop,w:bankWidth,h:rowCount*18,list});
+        }
+        for(let r=0;r<rowCount;r++)blocks.push({kind:'servo-row-label',title:['PWM','V+','GND'][r]||`Pin ${r+1}`,x:8+2*bankWidth+gap,y:gridTop+r*18,w:centerGap,h:18});
+        y=gridTop+rowCount*18+8;
+      }
+      continue;
+    }
+    const perRow=Math.min(16,group.list.length),gap=0,cw=(width-16)/perRow;
     for(let offset=0;offset<group.list.length;offset+=perRow){let rowHeight=0;const row=group.list.slice(offset,offset+perRow);if(group.bank){for(let b=0;b<Math.ceil(row.length/4);b++)blocks.push({kind:'bank-label',title:`Bank ${Math.floor(offset/4)+b+1} · CH ${offset+b*4}–${offset+Math.min(b*4+3,row.length-1)}`,x:8+b*(cw*4+gap),y,w:cw*4,h:18});y+=18;}
       row.forEach((s,j)=>{const list=n.pins.filter(p=>p.section===s.id),h=18+list.length*18,x=8+j*cw+(group.bank?Math.floor(j/4)*gap:0);blocks.push({s,x,y,w:cw-3,h,kind:'channel',list});list.forEach((p,i)=>pins.set(p.id,{x:x+(cw-3)/2,y:y+29+i*18,escapeX:x+cw-1,side:'bottom'}));rowHeight=Math.max(rowHeight,h);});y+=rowHeight+8;
     }
@@ -261,7 +278,8 @@ function boardGeometry(n) {
   for(const s of edgeHeaders.filter(s=>s.side==='bottom'))addEdgeHeader(s);
   if(!n.pins.length)y+=28;return {width,height:y+8,blocks,pins};
 }
-function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id||mapSelection.has(n.id)?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>['group-label','bank-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${['screw-terminal','edge-header'].includes(b.kind)?`style="left:${i*(b.kind==='screw-terminal'?36:32)}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
+function servoGridHTML(n,b){return `<section class="servo-grid" aria-label="Servo connector bank" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px">${b.list.map(({pin,x,y,channel})=>`<button class="servo-grid-pin" data-pin-device="${esc(n.id)}" data-pin-id="${esc(pin.id)}" aria-label="CH ${channel} / ${esc(pin.name)}" title="${esc(pinLabel(n,pin))}" style="left:${x-8}px;top:${y-8}px"><i></i></button>`).join('')}</section>`;}
+function physicalBoardHTML(n,g,pos){return `<article class="physical-board ${selected===n.id||mapSelection.has(n.id)?'selected':''}" style="left:${pos.x}px;top:${pos.y}px;width:${g.width}px;height:${g.height}px"><button class="physical-board-heading" data-drag="${esc(n.id)}" data-select-board="${esc(n.id)}"><span>▣</span><strong>${esc(n.name)}</strong><small>${esc(n.model||categories[n.category][0])} · ${n.pins.length} pins · drag to move</small></button>${g.blocks.map(b=>b.kind==='servo-grid'?servoGridHTML(n,b):['group-label','bank-label','servo-row-label'].includes(b.kind)?`<div class="board-group-label ${b.kind}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px">${esc(b.title)}</div>`:`<section class="board-section ${b.kind} ${b.s.side==='right'?'right-section':''}" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><h3 title="${esc(sectionPath(n,b.s.id))}">${esc(b.kind==='channel'?b.s.name.replace('Channel ','CH '):sectionPath(n,b.s.id))}</h3>${b.list.map((p,i)=>`<button class="physical-terminal" ${['screw-terminal','edge-header'].includes(b.kind)?`style="left:${i*(b.kind==='screw-terminal'?36:32)}px"`:''} data-pin-device="${esc(n.id)}" data-pin-id="${esc(p.id)}" title="${esc(pinLabel(n,p))}"><i></i><span>${esc(p.name)}</span></button>`).join('')}</section>`).join('')}${!n.pins.length?`<button class="empty-board-pins" data-select-board="${esc(n.id)}">Select this component to add sections and pins</button>`:''}</article>`;}
 let latestGeometry={positions:new Map(),sizes:new Map(),width:700,height:350};
 function mapMode(){return 'tree';}
 function routePhysicalWire(a,b,ap,bp,ag,bg,index){

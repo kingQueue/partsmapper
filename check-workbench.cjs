@@ -42,4 +42,10 @@ const pcbRound=run('validate(JSON.parse(JSON.stringify(exportObject())))');asser
 assert.ok(run('boardGeometry(libraryPwm).width<=500&&boardGeometry(libraryPwm).height<420'),'PWM card should use compact geometry');
 assert.ok(run('boardGeometry(node("controller")).width<=200'),'Small boards should no longer use a wide empty card');
 
-console.log('Passed: compact board geometry, full header/pin preservation through library/project/PCB copies, previews and inventories, reusable templates, independent component/pin IDs, firmware snapshots, local library persistence, PCB placement/rotation bounds, atomic resizing, project isolation, PCB JSON round trips, and invalid layout rejection.');
+run('const pwmGrid=boardGeometry(libraryPwm);const servoBanks=pwmGrid.blocks.filter(b=>b.kind==="servo-grid");const servoLabels=pwmGrid.blocks.filter(b=>b.kind==="servo-row-label");');
+assert.equal(run('servoBanks.length'),4);assert.ok(run('servoBanks.every(b=>b.list.length===12&&new Set(b.list.map(p=>p.x)).size===4&&new Set(b.list.map(p=>p.y)).size===3)'));
+assert.equal(run('servoLabels.map(b=>b.title).join(",")'),'PWM,V+,GND');
+assert.ok(run('servoLabels.every(b=>b.x+b.w/2===pwmGrid.width/2)'));
+assert.equal(run('servoBanks.reduce((sum,b)=>sum+b.list.length,0)'),48);
+assert.ok(run('servoBanks.every(b=>b.list.every(({pin,x,y})=>pwmGrid.pins.get(pin.id).x===b.x+x&&pwmGrid.pins.get(pin.id).y===b.y+y))'),'Wire endpoints match the visible grid pins');
+console.log('Passed: four 4×3 servo pin grids with centered row labels, compact board geometry, full header/pin preservation through library/project/PCB copies, previews and inventories, reusable templates, independent component/pin IDs, firmware snapshots, local library persistence, PCB placement/rotation bounds, atomic resizing, project isolation, PCB JSON round trips, and invalid layout rejection.');
