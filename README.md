@@ -18,6 +18,15 @@ The server listens only on this computer's loopback interface. It does not publi
 
 Alternatively, serve the `dist/` folder with a static HTTP server.
 
+### Windows server menu
+
+Double-click `Partmap.cmd` to open the Start/Stop/Restart menu. Start opens http://127.0.0.1:4173/ in your default browser. The server runs in the background; closing the menu does not stop it. Use Stop to shut it down. Browser-saved projects remain intact.
+
+For direct commands, use `Partmap.cmd start`, `Partmap.cmd stop`, `Partmap.cmd restart`, `Partmap.cmd status`, or `Partmap.cmd open`. The menu requires Node.js 18+ and Windows PowerShell. Runtime logs are written under `.partmap-runtime/` and excluded from Git. The Stop command only targets the Node process running this checkout's absolute `preview.cjs` path; it refuses to stop unrelated processes using port 4173. If an older manually started server uses that port, stop it in its original terminal before using the menu.
+
+Create a desktop shortcut to `Partmap.cmd` for quick access. This chat's installation has a **Partmap Server** desktop shortcut already configured.
+
+
 ## Check the app
 
 ```sh
