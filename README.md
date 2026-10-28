@@ -16,13 +16,13 @@ Open http://127.0.0.1:4173 in your browser. Stop the server with Ctrl+C.
 
 The server listens only on this computer's loopback interface. It does not publish the app or make it available to other devices. Keep the terminal running while using the app. Use the same local address each time so the browser loads the same saved project.
 
-Alternatively, serve the `dist/` folder with a static HTTP server.
+Use the included server for project-folder saving. A generic static server supports browser-only storage and downloads.
 
 ### Windows server menu
 
-Double-click `Partmap.cmd` to open the Start/Stop/Restart menu. Start opens http://127.0.0.1:4173/ in your default browser. The server runs in the background; closing the menu does not stop it. Use Stop to shut it down. Browser-saved projects remain intact.
+Double-click `Partmap.cmd` to open the server and project menu. Choose **6. Create new project folder** (browse to its parent and enter a name), or **7. Browse and open existing project folder** (select a folder containing `project.json`). Then choose **1** to start and open Partmap. **8** opens the selected folder in Explorer. The server runs in the background; closing the menu leaves it running. Use **2** to stop it. Selecting a folder does not delete browser backups or other projects.
 
-For direct commands, use `Partmap.cmd start`, `Partmap.cmd stop`, `Partmap.cmd restart`, `Partmap.cmd status`, or `Partmap.cmd open`. The menu requires Node.js 18+ and Windows PowerShell. Runtime logs are written under `.partmap-runtime/` and excluded from Git. The Stop command only targets the Node process running this checkout's absolute `preview.cjs` path; it refuses to stop unrelated processes using port 4173. If an older manually started server uses that port, stop it in its original terminal before using the menu.
+For direct commands, use `Partmap.cmd start`, `Partmap.cmd stop`, `Partmap.cmd restart`, `Partmap.cmd status`, `Partmap.cmd open`, `Partmap.cmd create`, `Partmap.cmd select`, or `Partmap.cmd folder`. The menu requires Node.js 18+ and Windows PowerShell. Runtime logs are written under `.partmap-runtime/` and excluded from Git. The Stop command only targets the Node process running this checkout's absolute `preview.cjs` path; it refuses to stop unrelated processes using port 4173. If an older manually started server uses that port, stop it in its original terminal before using the menu.
 
 Create a desktop shortcut to `Partmap.cmd` for quick access. This chat's installation has a **Partmap Server** desktop shortcut already configured.
 
@@ -57,7 +57,19 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Wiring-only updates with inventory locks and stale-result checks, preventing full-project append duplication.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
-Projects and attachments are saved in browser local storage. This repository contains application code and example data; it does not synchronize your personal project data. Export a Project JSON backup to move a project between browsers, origins, or devices.
+With a project folder selected, changes autosave to disk; the banner shows its path and save status. **Save now** flushes pending changes. The folder contains:
+
+- `project.json`: complete project, pins, connections, checklist, PCB placements, and embedded references.
+- `ai-brief.md` and `missing-requirements.md`: readable context and wiring review.
+- `component-library.json` and `pcb-sketch.json`: reusable components and PCB placement data.
+- `references/`: extracted uploads with an index connecting files to component IDs.
+- `exports/`: JSON, Markdown, library, PCB, reference, and wiring ZIP exports.
+- `wiring-handoff/`: unpacked agent prompt, project snapshot, starter command, requirements, and instructions.
+- `.partmap/backups/`: automatic project backups before changed saves, at most once per minute.
+
+Agents can read this directory directly. Use **Auto complete wiring**, have the agent write its results inside `wiring-handoff/`, then apply the returned JSON through **Update wiring (no new components)**. Direct external edits to the root project, requirements, or library pause saving until **Reload folder**; a browser recovery copy is retained. Save before switching folders, closing, or asking an agent to edit files. Only one editing tab should be open per project.
+
+Browser local storage remains a recovery cache. With no folder selected, the app supports browser-only storage and downloads. Personal project directories and runtime selection are excluded from this source repository. Move or back up the entire selected directory to keep files together.
 
 ### Move a project from the previous hosted app
 
@@ -77,7 +89,9 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `dist/clipboard.js`, `dist/clipboard.css`: independent component snapshots, keyboard shortcuts, independent copies, and component-detail clipboard actions
 - `dist/workbench.js`, `dist/workbench.css`: reusable component templates, firmware-note reuse, and PCB placement sketches
 - `dist/example-parts.csv`, `dist/example-parts.txt`: import examples
-- `preview.cjs`: local static server
+- `dist/project-folder.js`: disk autosaves, folder status, conflict recovery, and export routing
+- `project-store.cjs`: project-folder selection, atomic writes, extracted references, and revision checks
+- `preview.cjs`: loopback server and local project-folder API
 - `check.cjs`, `check-studio.cjs`, `check-hardware.cjs`, `check-clipboard.cjs`: verification scripts
 
 The app is intended for local use. Pushing source changes to this repository does not publish a website or change the previous hosted copy.

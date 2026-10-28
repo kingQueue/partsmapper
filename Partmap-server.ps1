@@ -1,6 +1,8 @@
 param(
-    [ValidateSet('menu', 'start', 'stop', 'restart', 'status', 'open')]
-    [string]$Action = 'menu'
+    [ValidateSet('menu', 'start', 'stop', 'restart', 'status', 'open', 'create', 'select', 'folder')]
+    [string]$Action = 'menu',
+    [string]$ProjectDirectory,
+    [string]$ProjectName
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +10,50 @@ $appUrl = 'http://127.0.0.1:4173/'
 $serverScript = Join-Path $PSScriptRoot 'preview.cjs'
 $runtimeDirectory = Join-Path $PSScriptRoot '.partmap-runtime'
 
+function Get-PartmapNode {
+    $command = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($null -ne $command) { return $command.Source }
+    $candidate = Join-Path $env:ProgramFiles 'nodejs\node.exe'
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+    throw 'Node.js 18 or newer is required.'
+}
+function Get-PartmapFolder {
+    $configFile = Join-Path $runtimeDirectory 'project-selection.json'
+    if (Test-Path -LiteralPath $configFile) { return (Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json).directory }
+    return $null
+}
+function Browse-PartmapFolder([string]$Description) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $Description
+    $dialog.ShowNewFolderButton = $true
+    try { if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dialog.SelectedPath } }
+    finally { $dialog.Dispose() }
+    return $null
+}
+function Select-PartmapProject([bool]$Create) {
+    $chosenDirectory = $ProjectDirectory
+    $chosenName = $ProjectName
+    if (-not $chosenDirectory) {
+        if ($Create) {
+            $parentDirectory = Browse-PartmapFolder 'Choose where to create the new Partmap project folder'
+            if (-not $parentDirectory) { return }
+            $chosenName = Read-Host 'New project name (also used for the folder name)'
+            if ([string]::IsNullOrWhiteSpace($chosenName) -or $chosenName -in @('.', '..') -or $chosenName.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) { throw 'Enter a valid project folder name.' }
+            $chosenDirectory = Join-Path $parentDirectory $chosenName
+        } else {
+            $chosenDirectory = Browse-PartmapFolder 'Open a Partmap project folder containing project.json'
+            if (-not $chosenDirectory) { return }
+        }
+    }
+    $nodeExecutable = Get-PartmapNode
+    $storeAction = if ($Create) { 'create' } else { 'open' }
+    $storeResult = & $nodeExecutable (Join-Path $PSScriptRoot 'project-store.cjs') $storeAction $chosenDirectory $chosenName
+    if ($LASTEXITCODE -ne 0) { throw ($storeResult -join [Environment]::NewLine) }
+    $selectedDirectory = Get-PartmapFolder
+    Write-Host ('Selected project: ' + $selectedDirectory) -ForegroundColor Green
+    Write-Host 'Open/reload Partmap to load this folder. Older tabs will stop saving when the folder changes.'
+}
 function Get-PartmapListener {
     $connections = @(Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue)
     if ($connections.Count -eq 0) { return $null }
@@ -31,6 +77,8 @@ function Show-PartmapStatus {
     if ($null -eq $serverProcess) { Write-Host 'Partmap is STOPPED.' -ForegroundColor Yellow }
     else { Write-Host "Partmap is RUNNING (process $($serverProcess.ProcessId))." -ForegroundColor Green }
     Write-Host "Address: $appUrl"
+    $folder = Get-PartmapFolder
+    if ($folder) { Write-Host "Project folder: $folder" -ForegroundColor Cyan } else { Write-Host "No project folder selected. Choose 6 (new) or 7 (open)." -ForegroundColor Yellow }
 }
 
 function Start-PartmapServer {
@@ -73,7 +121,7 @@ function Stop-PartmapServer {
         if ($null -eq (Get-Process -Id $serverProcess.ProcessId -ErrorAction SilentlyContinue)) { break }
         Start-Sleep -Milliseconds 100
     }
-    Write-Host 'Partmap stopped. Your browser-saved projects have not been deleted.' -ForegroundColor Yellow
+    Write-Host 'Partmap stopped. Your saved project files and browser backups are intact.' -ForegroundColor Yellow
 }
 
 function Invoke-PartmapAction([string]$SelectedAction) {
@@ -82,7 +130,10 @@ function Invoke-PartmapAction([string]$SelectedAction) {
         'stop' { Stop-PartmapServer }
         'restart' { Stop-PartmapServer; Start-PartmapServer }
         'status' { Show-PartmapStatus }
-        'open' { Start-PartmapServer; Start-Process $appUrl }
+        'open' { if (-not (Get-PartmapFolder)) { throw 'Choose Create new project (6) or Open project folder (7) first.' }; Start-PartmapServer; Start-Process ($appUrl + '?project=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) }
+        'create' { Select-PartmapProject $true }
+        'select' { Select-PartmapProject $false }
+        'folder' { $folder = Get-PartmapFolder; if (-not $folder) { throw 'No project folder selected.' }; Start-Process explorer.exe -ArgumentList ('"' + $folder + '"') }
     }
 }
 
@@ -102,6 +153,9 @@ while ($true) {
     Write-Host '3. Restart server'
     Write-Host '4. Open Partmap in browser'
     Write-Host '5. Refresh status'
+    Write-Host '6. Create new project folder'
+    Write-Host '7. Browse and open existing project folder'
+    Write-Host '8. Open selected folder in Explorer'
     Write-Host '0. Close this menu (leave server as it is)'
     Write-Host ''
     $selection = Read-Host 'Choose an option'
@@ -113,7 +167,10 @@ while ($true) {
             '3' { Invoke-PartmapAction 'restart' }
             '4' { Invoke-PartmapAction 'open' }
             '5' { continue }
-            default { Write-Host 'Choose 0, 1, 2, 3, 4, or 5.' }
+            '6' { Invoke-PartmapAction 'create' }
+            '7' { Invoke-PartmapAction 'select' }
+            '8' { Invoke-PartmapAction 'folder' }
+            default { Write-Host 'Choose an option from 0 to 8.' }
         }
     } catch { Write-Host $_.Exception.Message -ForegroundColor Red }
     Read-Host 'Press Enter to return to the menu' | Out-Null

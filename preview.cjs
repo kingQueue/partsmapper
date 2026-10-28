@@ -2,15 +2,32 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+const store = require('./project-store.cjs');
+const crypto = require('crypto');
 const root = path.join(__dirname, 'dist');
 const types = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.csv': 'text/csv', '.txt': 'text/plain', '.md': 'text/markdown' };
-const server = http.createServer((req, res) => {
+function createPartmapServer({config=store.DEFAULT_CONFIG}={}) {
+const token=crypto.randomBytes(32).toString('hex');let writes=Promise.resolve();
+const server = http.createServer(async (req, res) => {
   let pathname;
   try {
     pathname = decodeURIComponent(req.url.split('?')[0]);
   } catch {
     res.writeHead(400);
     return res.end('Invalid URL');
+  }
+  if (pathname.startsWith('/api/')) {
+    const port=server.address()?.port,allowed=new Set([`127.0.0.1:${port}`,`localhost:${port}`]);
+    const reply=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Cross-Origin-Resource-Policy':'same-origin','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
+    if(!allowed.has(req.headers.host)||req.headers['sec-fetch-site']==='cross-site'||(req.headers.origin&&!new Set([`http://127.0.0.1:${port}`,`http://localhost:${port}`]).has(req.headers.origin)))return reply(403,{error:'Project APIs only accept requests from this local app.'});
+    try {
+      if(pathname==='/api/workspace'&&req.method==='GET')return reply(200,{...(await store.readWorkspace(config)),token});
+      if(req.method!=='POST'||req.headers['x-partmap-token']!==token||!String(req.headers['content-type']).startsWith('application/json'))return reply(403,{error:'Invalid project request.'});
+      const chunks=[];let size=0;for await (const chunk of req){size+=chunk.length;if(size>64*1024*1024)throw Object.assign(Error('Project request exceeds 64 MB.'),{status:413});chunks.push(chunk);}const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const operation=pathname==='/api/workspace/save'?()=>store.saveWorkspace(config,body):pathname==='/api/workspace/export'?()=>store.saveExport(config,body):null;
+      if(!operation)return reply(404,{error:'Unknown project operation.'});
+      const result=writes.then(operation);writes=result.catch(()=>{});return reply(200,await result);
+    }catch(error){return reply(error.status||500,{error:error.message});}
   }
   const file = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
   if (!file.startsWith(root + path.sep)) {
@@ -27,6 +44,11 @@ const server = http.createServer((req, res) => {
     res.end(contents);
   });
 });
+return server;
+}
+module.exports={createPartmapServer};
+if(require.main===module){
+const server=createPartmapServer();
 server.on('error', error => {
   console.error(error.code === 'EADDRINUSE' ? 'Port 4173 is already in use. If Partmap is already running, open http://127.0.0.1:4173.' : error.message);
   process.exitCode = 1;
@@ -36,3 +58,5 @@ server.listen(4173, '127.0.0.1', () => {
   console.log('Open http://127.0.0.1:4173');
   console.log('Keep this process running while editing. Press Ctrl+C to stop.');
 });
+
+}
