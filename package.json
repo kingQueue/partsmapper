@@ -5,7 +5,7 @@
   "description": "Visual hardware component trees, parts lists, and pin-to-pin wiring maps",
   "scripts": {
     "start": "node preview.cjs",
-    "test": "node check.cjs && node check-studio.cjs && node check-hardware.cjs && node check-clipboard.cjs && node check-workbench.cjs && node check-assembly.cjs && node check-handoff.cjs"
+    "test": "node check.cjs && node check-studio.cjs && node check-hardware.cjs && node check-clipboard.cjs && node check-workbench.cjs && node check-assembly.cjs && node check-handoff.cjs && node check-wiring-guard.cjs"
   },
   "engines": { "node": ">=18" }
 }

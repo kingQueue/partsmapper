@@ -54,6 +54,7 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Reference file attachments and component specifications.
 - Missing requirements sidebar with safe Markdown viewing/editing/import and per-project document persistence.
 - Auto complete wiring task packages: one ZIP with full JSON, agent prompt, starter command, and requirements Markdown.
+- Wiring-only updates with inventory locks and stale-result checks, preventing full-project append duplication.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
 Projects and attachments are saved in browser local storage. This repository contains application code and example data; it does not synchronize your personal project data. Export a Project JSON backup to move a project between browsers, origins, or devices.

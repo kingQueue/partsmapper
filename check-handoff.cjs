@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const els=new Map(),el=s=>{if(!els.has(s))els.set(s,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:''});return els.get(s);};
 const ctx={document:{querySelector:el,querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},structuredClone,crypto:require('crypto').webcrypto,console,setTimeout,clearTimeout,performance,TextEncoder,Blob};vm.createContext(ctx);
-for(const name of ['app','studio','hardware','clipboard','workbench','assembly','wiring-handoff'])vm.runInContext(fs.readFileSync(`dist/${name}.js`,'utf8').replace(/\n(?:render\(\)|initializeHardware\(\)|initializeComponentClipboard\(\)|initializeWorkbench\(\)|initializeAssembly\(\)|initializeWiringHandoff\(\));\s*$/,''),ctx);
+for(const name of ['app','studio','hardware','clipboard','workbench','assembly','wiring-handoff','wiring-guard'])vm.runInContext(fs.readFileSync(`dist/${name}.js`,'utf8').replace(/\n(?:render\(\)|initializeHardware\(\)|initializeComponentClipboard\(\)|initializeWorkbench\(\)|initializeAssembly\(\)|initializeWiringHandoff\(\));\s*$/,''),ctx);
 const run=s=>vm.runInContext(s,ctx);
 run('project.requirementsDocument=validateRequirementsDocument({markdown:"# Missing requirements\\n\\n- Confirm battery rail.\\n- Encoder pin labels needed.\\n",updatedAt:"2026-10-28"});const nodesBeforeHandoff=JSON.stringify(project.nodes);const historyBeforeHandoff=JSON.stringify(project.history);const baselineBeforeHandoff=JSON.stringify(project.baseline);const files=buildWiringHandoffFiles();');
 const files=run('files');assert.deepEqual(Array.from(files,f=>f.name),['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md']);
