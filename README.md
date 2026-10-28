@@ -52,6 +52,8 @@ The checks cover tree validation, import parsing, baseline changes, pin inventor
 - Box selection and group dragging in product, wiring, and PCB views; visible validation feedback inside dialogs.
 - Compact wiring boards and PCB header previews/inventories, preserving complete header and pin definitions through component copies.
 - Reference file attachments and component specifications.
+- Missing requirements sidebar with safe Markdown viewing/editing/import and per-project document persistence.
+- Auto complete wiring task packages: one ZIP with full JSON, agent prompt, starter command, and requirements Markdown.
 - JSON backups and Markdown briefs for an AI coding assistant, including changes since a baseline.
 
 Projects and attachments are saved in browser local storage. This repository contains application code and example data; it does not synchronize your personal project data. Export a Project JSON backup to move a project between browsers, origins, or devices.
@@ -68,6 +70,7 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `dist/style.css`: layout and styles
 - `dist/app.js`: component tree, non-cascading component removal, persistence, and exports
 - `dist/assembly.js`: retained checklist plans, automatic map-presence status, restoration, and completion feedback
+- `dist/wiring-handoff.js`: requirements Markdown workspace, project document persistence, and agent ZIP exports
 - `dist/studio.js`: pin inventories, wiring view, and parts-list import preview
 - `dist/hardware.js`, `dist/hardware.css`: stable pin IDs, nested sections, device instances, grouped board layouts, dragging, and zoom
 - `dist/clipboard.js`, `dist/clipboard.css`: independent component snapshots, keyboard shortcuts, independent copies, and component-detail clipboard actions
