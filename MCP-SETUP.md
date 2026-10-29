@@ -78,7 +78,7 @@ For wiring tasks use `partmap_apply_wiring`; this keeps existing component IDs/c
 
 Each tool result has a **requestId**. Errors have `isError:true`, `ok:false`, and an error **code**, **message** and **hint**. Tool calls, validation failures, successes and protocol errors are recorded in JSONL files under the source folder's `.partmap-runtime/mcp/logs/`. `partmap_status` returns the exact current log path. Logs rotate per process at roughly 2 MiB; old sessions are retained for diagnosis.
 
-Ask for `partmap_export_diagnostics` with `save:true`. Send its `.partmap/mcp-diagnostics/<id>.json` report and the request ID. The report includes recent events from up to five sessions. The Windows test also writes `.partmap-runtime/mcp/last-access-test.json`, useful if the connection cannot start. For a startup failure, send that file and any stderr from your MCP client's server panel.
+Ask for `partmap_export_diagnostics` with `save:true`. Send its `.partmap/mcp-diagnostics/<id>.json` report and the request ID. If the project filesystem rejects the report write, it falls back to the server log directory under reports/. The result includes savedPath, location=server-log-fallback and projectWritable=false; a saved diagnostic report does not mean project writes succeeded. The report includes recent events from up to five sessions. The Windows test also writes `.partmap-runtime/mcp/last-access-test.json`, useful if the connection cannot start. For a startup failure, send that file and any stderr from your MCP client's server panel.
 
 Diagnostics intentionally omit tool argument values and full project/file content. They contain local folder paths, filenames, tool names and error text; inspect the report before sharing. Logs cannot include an invalid model response that never reached the MCP client/server. For those failures, also send Character Room's **App-verified tool record** and the exact model-format error. MCP does not bypass client approvals, character grants or OS permissions.
 
@@ -93,6 +93,7 @@ Diagnostics intentionally omit tool argument values and full project/file conten
 | `REVISION_CONFLICT` | Stop simultaneous edits, read again and use the returned hash. |
 | `WIRING_REJECTED` | Preserve existing inventory/pin/header IDs; use a current snapshot. |
 | `PATH_DENIED` | Keep paths inside the configured folder; links, secrets and metadata are blocked. |
+| `PROJECT_WRITE_FAILED` | Write mode is enabled, but the filesystem rejected a specific operation. Read error.details for operation, path, underlying Node code and errno. Check the device and use a verified working copy on another drive if needed. |
 | `FILE_BUSY` | Another MCP writer holds the file lock; inspect/retry. |
 | `EACCES` / `EPERM` | OS access failed; include diagnostics rather than changing grants blindly. |
 
@@ -107,3 +108,5 @@ Agents see `parts_status`, `parts_self_test`, `parts_diagnostics` and the existi
 Run `npm test` for all studio checks and real MCP stdio integration tests, or `npm run test:mcp` alone. Tests use temporary fixture projects, not your hardware project.
 
 Protocol reference: [official MCP SDK server documentation](https://ts.sdk.modelcontextprotocol.io/server). The implementation uses the SDK’s stdio transport and tool schemas; project access, tests and diagnostic files are specific to Partmap.
+
+On Windows, a generic UNKNOWN filesystem error can hide a device-level failure. The observed E: incident returned native Windows error 433 (a device which does not exist was specified), while equivalent C: creation worked. Do not treat that as a missing MCP grant. Preserve readable data, record any unreadable files, and explicitly select/reassign a verified working directory. The intentional INVALID_ARGUMENTS errorProbe in access-test output is expected; the proof and diagnostic results determine actual access.
