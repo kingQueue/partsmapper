@@ -51,6 +51,17 @@ try{
   const page=await call(rw,'partmap_read_file',{path:'context.md'});assert.equal(page.content,'SECRET_TEST_CONTENT');
   const contextSave=await call(rw,'partmap_write_file',{path:'context.md',content:'Updated',expected_sha256:page.sha256});assert.equal(contextSave.verified,true);
   assert.equal((await call(rw,'partmap_export_project',{format:'markdown',output:'exports/brief.md'})).verified,true);
+  const repeated=await call(rw,'partmap_export_project',{format:'markdown',output:'exports/brief.md'});assert.equal(repeated.ok,true);
+  const jsonExport=await call(rw,'partmap_export_project',{format:'json',output:'exports/snapshot.json'});
+  const identical=await call(rw,'partmap_export_project',{format:'json',output:'exports/snapshot.json'});assert.equal(identical.unchanged,true);assert.equal(identical.written,false);
+  const strictExport=await call(rw,'partmap_export_project',{format:'json',output:'exports/snapshot.json',on_exists:'error'});assert.equal(strictExport.error.code,'READ_REQUIRED');assert.equal(strictExport.error.details.path,'exports/snapshot.json');
+  assert.equal(strictExport.error.details.readTool,'partmap_read_file');
+  const staleExport=await call(rw,'partmap_export_project',{format:'json',output:'exports/snapshot.json',expected_sha256:'0'.repeat(64)});assert.equal(staleExport.error.code,'REVISION_CONFLICT');
+  const refreshedExport=await call(rw,'partmap_export_project',{format:'json',output:'exports/snapshot.json',expected_sha256:jsonExport.sha256});assert.equal(refreshedExport.verified,true);
+  await call(rw,'partmap_write_file',{path:'exports/brief.md',content:'Retain this older export',expected_sha256:(await call(rw,'partmap_read_file',{path:'exports/brief.md'})).sha256});
+  const newName=await call(rw,'partmap_export_project',{format:'markdown',output:'exports/brief.md'});assert.notEqual(newName.path,'exports/brief.md');assert.equal(newName.requestedOutput,'exports/brief.md');
+  assert.equal((await call(rw,'partmap_read_file',{path:'exports/brief.md'})).content,'Retain this older export');
+
   const target=path.join(temp,'outside');await fs.mkdir(target);await fs.writeFile(path.join(target,'secret.md'),'outside');await fs.symlink(target,path.join(project,'escape'),process.platform==='win32'?'junction':'dir');
   assert.equal((await call(rw,'partmap_read_file',{path:'escape/secret.md'})).error.code,'PATH_DENIED');
   const report=await call(rw,'partmap_export_diagnostics',{save:true});assert.equal(report.verified,true);

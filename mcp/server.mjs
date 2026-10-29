@@ -12,7 +12,7 @@ import {z} from 'zod';
 import {projectRelative} from './paths.mjs';
 const require=createRequire(import.meta.url),model=require('./model.cjs'),store=require('../project-store.cjs');
 const appRoot=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const sessionId=crypto.randomUUID(),version='1.0.2',MAX_BYTES=16*1024*1024;
+const sessionId=crypto.randomUUID(),version='1.0.3',MAX_BYTES=16*1024*1024;
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const fail=(code,message,hint)=>Object.assign(Error(message),{code,hint});
 const hash=z.string().regex(/^[a-f0-9]{64}$/,'Use the actual 64-character SHA-256 returned by a read, never a placeholder.');
@@ -86,7 +86,12 @@ async function write(relative,bytes,expected,{internal=false}={}){
   const lock=await writeStep('create writer lock',file,()=>fs.open(file+'.partmap-mcp-lock','wx')).catch(error=>{if(error.code==='EEXIST')throw fail('FILE_BUSY','Another MCP process is writing this file.','Retry after it completes. If its process crashed, inspect and remove the stale .partmap-mcp-lock file manually.');throw error;});
   try{
     const previous=await fs.readFile(file).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
-    if(previous&&(!expected||sha(previous)!==expected))throw fail('REVISION_CONFLICT','The file changed or was not read before replacement.','Read it again and use its exact returned sha256 as expected_sha256.');
+    if(previous&&(!expected||sha(previous)!==expected)){
+      const readTool=relative.split('/').pop().toLowerCase()==='project.json'?'partmap_read_project':'partmap_read_file';
+      const problem=fail(expected?'REVISION_CONFLICT':'READ_REQUIRED',expected?'Destination '+relative+' changed since the supplied hash was read.':'Destination '+relative+' already exists; no destination hash was supplied.',
+        'Call '+readTool+' with '+JSON.stringify({path:relative})+' and pass that destination file hash as expected_sha256. A source project hash does not authorize replacing a separate export. Or choose a new output filename.');
+      problem.details={path:relative,operation:'replace',expectedHashProvided:!!expected,readTool,readArguments:{path:relative}};throw problem;
+    }
     if(!previous&&expected)throw fail('REVISION_CONFLICT','The expected file no longer exists.','Read the latest project before retrying.');
     if(previous&&relative.endsWith('.json')&&!internal){
       const backup='.partmap/mcp-backups/'+crypto.randomUUID()+'.json',backupFile=await scoped(backup,{internal:true});await writeStep('create backup directory',path.dirname(backupFile),()=>fs.mkdir(path.dirname(backupFile),{recursive:true}));await writeStep('write backup',backupFile,()=>fs.writeFile(backupFile,previous,{flag:'wx'}));
@@ -121,7 +126,20 @@ tool('partmap_write_project','Create or update a FULL project object, preserving
 tool('partmap_apply_wiring','Apply a complete wiring result to project.json without extra components. Keeps exact component IDs/count, parents, quantities, pin/header IDs, positions and unrelated data. Pass the real current file hash. Requires --allow-writes.',z.object({project:projectSchema,expected_sha256:hash}).strict(),async({project,expected_sha256})=>{const current=await readProject();if(current.sha256!==expected_sha256)throw fail('REVISION_CONFLICT','Project changed after the agent read it.','Read the latest project and retry.');let next;try{next=model.wiring(current.project,project);}catch(error){throw fail('WIRING_REJECTED',error.message,'Keep all existing component, pin and header IDs. Re-read/re-export if the wiring snapshot is stale.');}return write('project.json',Buffer.from(JSON.stringify(next,null,2)),expected_sha256);},false);
 tool('partmap_read_file','Read project-local UTF-8 context/requirements in pages, with full file sha256. No repository metadata, secrets or traversal.',z.object({path:rel,start_line:z.number().int().min(1).default(1),line_count:z.number().int().min(1).max(300).default(100)}).strict(),async({path,start_line,line_count})=>{const r=await read(path);if(r.bytes.includes(0))throw fail('BINARY_FILE','Use text context files.');const lines=r.bytes.toString('utf8').split('\n'),content=lines.slice(start_line-1,start_line-1+line_count).join('\n');if(content.length>100000)throw fail('FILE_TOO_LARGE','Request fewer lines.');return {path,sha256:r.sha256,content,start_line,total_lines:lines.length,next_line:start_line+line_count<=lines.length?start_line+line_count:null};});
 tool('partmap_write_file','Create/update a project-local Markdown, text, CSV or output JSON file. Existing outputs require their actual file hash. Use write_project for the root project. Requires --allow-writes.',z.object({path:rel,content:z.string().max(2000000),expected_sha256:hash.optional()}).strict(),async({path:relative,content,expected_sha256})=>{relative=projectRelative(root,relative);if(relative.toLowerCase()==='project.json'||!(/\.(md|txt|csv|json)$/i).test(relative))throw fail('INVALID_OUTPUT','Use write_project for project.json; context/output files must be .md, .txt, .csv or .json.');if(relative.endsWith('.json')){let parsed;try{parsed=JSON.parse(content);}catch{throw fail('INVALID_OUTPUT','JSON output must be valid JSON.');}if(parsed?.nodes)model.validate(parsed);}return write(relative,Buffer.from(content),expected_sha256);},false);
-tool('partmap_export_project','Export a separate JSON/CSV snapshot or AI Markdown brief to stdout content or a project-local output. Never overwrites the source. output requires --allow-writes and existing destination hash.',z.object({path:projectPath,format:z.enum(['json','markdown','csv']).default('json'),output:rel.optional(),expected_sha256:hash.optional()}).strict(),async({path:relative,format,output,expected_sha256})=>{const p=await readProject(relative),content=format==='json'?JSON.stringify(p.project,null,2):format==='markdown'?model.brief(p.project):csv(p.project);if(!output)return {format,content};if(projectRelative(root,output).toLowerCase()===projectRelative(root,relative).toLowerCase())throw fail('INVALID_OUTPUT','Export to a separate output file.');return {...await write(output,Buffer.from(content),expected_sha256),format};},false);
+tool('partmap_export_project','Export an existing project snapshot; this does NOT add wiring or edit the source. Existing identical exports are reused. Otherwise, without a destination hash, a new filename is used by default. To replace an existing export, read THAT output file and supply its hash. on_exists=error requires explicit overwrite protection.',z.object({path:projectPath,format:z.enum(['json','markdown','csv']).default('json'),output:rel.optional(),expected_sha256:hash.optional(),on_exists:z.enum(['new_file','error']).default('new_file')}).strict(),async({path:relative,format,output,expected_sha256,on_exists})=>{
+  const p=await readProject(relative),content=format==='json'?JSON.stringify(p.project,null,2):format==='markdown'?model.brief(p.project):csv(p.project);
+  if(!output)return {format,content};needWrite();
+  output=projectRelative(root,output);const requestedOutput=output;
+  if(output.toLowerCase()===projectRelative(root,relative).toLowerCase())throw fail('INVALID_OUTPUT','Export to a separate output file.');
+  if(!expected_sha256&&on_exists==='new_file'){
+    const existing=await read(output).catch(error=>{if(error.code==='FILE_NOT_FOUND')return null;throw error;});
+    if(existing){
+      if(existing.bytes.equals(Buffer.from(content)))return {path:output,sha256:existing.sha256,bytes:existing.bytes.length,written:false,verified:true,unchanged:true,format,note:'Existing export already matches. No file was changed; this does not complete a wiring edit.'};
+      const ext=path.posix.extname(output);output=output.slice(0,output.length-ext.length)+'-'+crypto.randomUUID().slice(0,8)+ext;
+    }
+  }
+  return {...await write(output,Buffer.from(content),expected_sha256),format,requestedOutput,note:output!==requestedOutput?'Existing output retained; saved to a new filename.':'Exported existing project data; the source project was not changed.'};
+},false);
 tool('partmap_export_diagnostics','Collect recent errors. save=true writes a shareable report in .partmap/mcp-diagnostics; if the project device rejects writes, save to the server log reports directory instead. Requires --allow-writes. Returns the actual absolute savedPath.',z.object({save:z.boolean().default(false)}).strict(),async({save})=>{
   const report=await diagnostics();if(!save)return report;needWrite();const id=crypto.randomUUID();
   try{const receipt=await write('.partmap/mcp-diagnostics/'+id+'.json',Buffer.from(JSON.stringify(report,null,2)),undefined,{internal:true});return {...receipt,savedPath:path.join(root,receipt.path),location:'project',report};}

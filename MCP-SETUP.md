@@ -114,3 +114,7 @@ On Windows, a generic UNKNOWN filesystem error can hide a device-level failure. 
 ### Windows path spelling
 
 Tools accept project-relative paths with forward or backward slashes and absolute paths that resolve inside the configured project. On Windows, a single leading slash is a project-root alias: when the root is D:\part_map_demo, /wiring-handoff/project.json resolves to its wiring-handoff/project.json. It does not refer to the drive root. Cross-drive paths, sibling-folder paths, parent traversal, UNC/device paths, protected metadata and links remain blocked. Relative paths are still the clearest choice. Changes do not extend the configured project scope.
+
+### Re-running export tasks
+
+A new chat does not remove prior output files. MCP exports reuse byte-identical output without a write; if output differs and no expected_sha256 is supplied, they retain the old file and return a new generated filename. Inspect the returned path. on_exists=error opts into strict replacement checks. A missing destination hash is READ_REQUIRED, while a mismatched supplied hash is REVISION_CONFLICT; errors include the exact destination and read tool arguments. Overwriting an export requires that export file hash, not the source project hash. Project updates retain their existing strict read-before-write rules. Exporting a snapshot does not add connections or complete a wiring-edit task.
