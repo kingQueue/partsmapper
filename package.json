@@ -5,7 +5,15 @@
   "description": "Visual hardware component trees, parts lists, and pin-to-pin wiring maps",
   "scripts": {
     "start": "node preview.cjs",
-    "test": "node check.cjs && node check-studio.cjs && node check-hardware.cjs && node check-clipboard.cjs && node check-workbench.cjs && node check-assembly.cjs && node check-handoff.cjs && node check-wiring-guard.cjs && node check-project-store.cjs && node check-project-folder.cjs"
+    "test": "node check.cjs && node check-studio.cjs && node check-hardware.cjs && node check-clipboard.cjs && node check-workbench.cjs && node check-assembly.cjs && node check-handoff.cjs && node check-wiring-guard.cjs && node check-project-store.cjs && node check-project-folder.cjs && node check-mcp.mjs",
+    "mcp": "node mcp/server.mjs",
+    "test:mcp": "node check-mcp.mjs"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  }
 }

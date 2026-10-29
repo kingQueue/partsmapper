@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "partmap": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "C:\\path\\to\\partsmapper\\mcp\\server.mjs",
+        "--project",
+        "C:\\path\\to\\your-project",
+        "--allow-writes"
+      ]
+    }
+  }
+}

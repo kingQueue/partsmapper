@@ -156,6 +156,7 @@ while ($true) {
     Write-Host '6. Create new project folder'
     Write-Host '7. Browse and open existing project folder'
     Write-Host '8. Open selected folder in Explorer'
+    Write-Host '9. Test agent/MCP access and save diagnostics'
     Write-Host '0. Close this menu (leave server as it is)'
     Write-Host ''
     $selection = Read-Host 'Choose an option'
@@ -170,7 +171,8 @@ while ($true) {
             '6' { Invoke-PartmapAction 'create' }
             '7' { Invoke-PartmapAction 'select' }
             '8' { Invoke-PartmapAction 'folder' }
-            default { Write-Host 'Choose an option from 0 to 8.' }
+            '9' { & (Join-Path $PSScriptRoot 'Partmap-MCP-Test.ps1') }
+            default { Write-Host 'Choose an option from 0 to 9.' }
         }
     } catch { Write-Host $_.Exception.Message -ForegroundColor Red }
     Read-Host 'Press Enter to return to the menu' | Out-Null

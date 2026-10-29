@@ -95,3 +95,8 @@ See [the user guide](dist/README.md) for import formats and limitations. The wir
 - `check.cjs`, `check-studio.cjs`, `check-hardware.cjs`, `check-clipboard.cjs`: verification scripts
 
 The app is intended for local use. Pushing source changes to this repository does not publish a website or change the previous hosted copy.
+
+
+## Agent access through MCP
+
+See [MCP-SETUP.md](MCP-SETUP.md) for the local stdio server, client configuration, agent access-proof sequence and shareable error logs. Run npm ci once, then use option 9 in the Windows launcher or Partmap-MCP-Test.cmd to verify the selected project without changing its hardware map.
