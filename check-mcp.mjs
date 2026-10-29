@@ -2,12 +2,19 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {projectRelative} from './mcp/paths.mjs';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'partmap-mcp-test-')),project=path.join(temp,'project'),logs=path.join(temp,'logs');
 await fs.mkdir(project);const seed={schemaVersion:'2.0',name:'MCP fixture',nodes:[{id:'board',name:'ESP32',category:'board',quantity:1,parent:null,pins:[{id:'gnd',name:'GND',section:'main',type:'ground',notes:''}],pinSections:[{id:'main',name:'Main',parent:null,side:'left',style:'standard'}],connections:[],attachments:[]}]};
 await fs.writeFile(path.join(project,'project.json'),JSON.stringify(seed));
+for(const spelling of ['project.json','./project.json','D:/part_map_demo/project.json','D:\\part_map_demo\\project.json','/project.json'])assert.equal(projectRelative('D:/part_map_demo',spelling,'win32'),'project.json');
+assert.equal(projectRelative('D:/part_map_demo','/wiring-handoff/project.json','win32'),'wiring-handoff/project.json');
+assert.equal(projectRelative('D:/part_map_demo','wiring-handoff\\project.json','win32'),'wiring-handoff/project.json');
+for(const spelling of ['D:/part_map_demo-other/project.json','C:/outside/project.json','../project.json','D:relative.json','//server/share/file.json','D:/part_map_demo/../secret.json'])assert.throws(()=>projectRelative('D:/part_map_demo',spelling,'win32'),/unsafe|outside/);
+assert.equal(projectRelative('/project','/project/project.json','linux'),'project.json');
+assert.throws(()=>projectRelative('/project','/outside/project.json','linux'),/outside/);
 const clients=[];
 async function connect(writable){const c=new Client({name:'integration-test',version:'1'}),t=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('./mcp/server.mjs',import.meta.url)),'--project',project,'--log-dir',logs,...(writable?['--allow-writes']:[])],stderr:'pipe'});let stderr='';t.stderr?.on('data',b=>stderr+=b);try{await c.connect(t,{timeout:10000});}catch(e){throw Error(e.message+'\n'+stderr);}clients.push(c);return c;}
 async function call(c,name,args={}){const r=await c.callTool({name,arguments:args});assert.ok(r.content[0].text);const body=JSON.parse(r.content[0].text);assert.deepEqual(r.structuredContent,body);if(!body.ok)assert.equal(r.isError,true);return body;}
@@ -27,6 +34,7 @@ try{
   const fallback=await call(rw,'partmap_export_diagnostics',{save:true});assert.equal(fallback.location,'server-log-fallback');assert.equal(fallback.projectWritable,false);assert.equal(fallback.verified,true);assert.ok((await fs.readFile(fallback.savedPath,'utf8')).includes('PROJECT_WRITE_FAILED'));
   await fs.unlink(obstructed);
   const proof=await call(rw,'partmap_self_test',{write_test:true});assert.equal(proof.passed,true);assert.equal(proof.projectUnchanged,true);assert.ok((await fs.readFile(path.join(project,proof.proof.path),'utf8')).includes('access proof'));
+  const alias=await call(rw,'partmap_read_project',{path:path.join(project,'project.json')});assert.equal(alias.path,'project.json');assert.equal((await call(rw,'partmap_validate_project',{path:path.join(project,'project.json')})).valid,true);
   const original=await call(rw,'partmap_read_project');assert.equal(original.project.name,seed.name);
   const updated={...original.project,name:'Edited through MCP'};
   assert.equal((await call(rw,'partmap_write_project',{project:updated,expected_sha256:'a'.repeat(64)})).error.code,'REVISION_CONFLICT');
@@ -37,6 +45,8 @@ try{
   assert.equal((await call(rw,'partmap_apply_wiring',{project:wiring,expected_sha256:save.sha256})).error.code,'WIRING_REJECTED');
   const wire=await call(rw,'partmap_apply_wiring',{project:updated,expected_sha256:save.sha256});assert.equal(wire.verified,true);
   assert.equal((await call(rw,'partmap_write_file',{path:'project.json',content:'{}'})).error.code,'INVALID_OUTPUT');
+  assert.equal((await call(rw,'partmap_write_file',{path:path.join(project,'project.json'),content:'{}'})).error.code,'INVALID_OUTPUT');
+  assert.equal((await call(rw,'partmap_export_project',{output:path.join(project,'project.json')})).error.code,'INVALID_OUTPUT');
   assert.equal((await call(rw,'partmap_write_file',{path:'context.md',content:'SECRET_TEST_CONTENT'})).verified,true);
   const page=await call(rw,'partmap_read_file',{path:'context.md'});assert.equal(page.content,'SECRET_TEST_CONTENT');
   const contextSave=await call(rw,'partmap_write_file',{path:'context.md',content:'Updated',expected_sha256:page.sha256});assert.equal(contextSave.verified,true);

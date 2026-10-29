@@ -9,9 +9,10 @@ import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {CallToolRequestSchema,ListToolsRequestSchema} from '@modelcontextprotocol/sdk/types.js';
 import {z} from 'zod';
+import {projectRelative} from './paths.mjs';
 const require=createRequire(import.meta.url),model=require('./model.cjs'),store=require('../project-store.cjs');
 const appRoot=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const sessionId=crypto.randomUUID(),version='1.0.1',MAX_BYTES=16*1024*1024;
+const sessionId=crypto.randomUUID(),version='1.0.2',MAX_BYTES=16*1024*1024;
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const fail=(code,message,hint)=>Object.assign(Error(message),{code,hint});
 const hash=z.string().regex(/^[a-f0-9]{64}$/,'Use the actual 64-character SHA-256 returned by a read, never a placeholder.');
@@ -44,7 +45,8 @@ if(!(await fs.stat(root)).isDirectory()||root===path.parse(root).root||root===os
 config.project=root;
 const blocked=new Set(['.git','.hg','.svn','.ssh','.aws','.codex','.agents','.vscode','.idea','node_modules']);
 async function scoped(relative,{internal=false}={}){
-  if(typeof relative!=='string'||relative.includes('\\')||path.isAbsolute(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'||blocked.has(p.toLowerCase())||p.toLowerCase().startsWith('.env')))throw fail('PATH_DENIED','Use a project-relative path with forward slashes; traversal, secrets and repository metadata are unavailable.');
+  relative=projectRelative(root,relative);
+  if(typeof relative!=='string'||relative.includes('\\')||path.isAbsolute(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'||blocked.has(p.toLowerCase())||p.toLowerCase().startsWith('.env')))throw fail('PATH_DENIED','Traversal, secrets and repository metadata are unavailable. Use project.json or a path inside this project.');
   if(!internal&&(relative.toLowerCase().split('/').includes('.partmap')||relative.toLowerCase()==='.partmap-project.json'))throw fail('PATH_DENIED','This is Partmap metadata. Use project.json for components.');
   try{
     const file=await store.safePath(root,relative);
@@ -55,11 +57,13 @@ async function scoped(relative,{internal=false}={}){
   }catch(error){throw error.code?error:fail('PATH_DENIED',error.message);}
 }
 async function read(relative,{internal=false}={}){
+  relative=projectRelative(root,relative);
   const file=await scoped(relative,{internal}),stat=await fs.stat(file).catch(error=>{throw fail(error.code==='ENOENT'?'FILE_NOT_FOUND':error.code,error.message,'Check partmap_status and the relative path.');});
   if(!stat.isFile()||stat.size>MAX_BYTES)throw fail('FILE_TOO_LARGE','Use a regular project file up to 16 MiB.');
   const bytes=await fs.readFile(file);return {bytes,sha256:sha(bytes),path:relative};
 }
 async function readProject(relative='project.json'){
+  relative=projectRelative(root,relative);
   if(relative.split('/').pop()==='.partmap-project.json')throw fail('WRONG_PROJECT_FILE','.partmap-project.json is only a folder marker.','Call partmap_read_project with path project.json.');
   if(!relative.endsWith('.json'))throw fail('INVALID_PROJECT','Project files must end in .json.');
   const result=await read(relative);let project;
@@ -75,6 +79,7 @@ async function writeStep(operation,target,action){
   }
 }
 async function write(relative,bytes,expected,{internal=false}={}){
+  relative=projectRelative(root,relative);
   needWrite();if(bytes.length>MAX_BYTES)throw fail('FILE_TOO_LARGE','Writes are limited to 16 MiB.');
   let file=await writeStep('resolve output path',relative,()=>scoped(relative,{internal}));await writeStep('create parent directory',path.dirname(file),()=>fs.mkdir(path.dirname(file),{recursive:true}));file=await scoped(relative,{internal});
   // Exclusive per-file lock coordinates MCP processes. Browser edits remain revision-detected.
@@ -115,8 +120,8 @@ tool('partmap_analyze_project','Summarize components, categories, roots, pin cou
 tool('partmap_write_project','Create or update a FULL project object, preserving existing nodes/IDs when adding components. For existing files pass the real expected_sha256 from read_project. Requires --allow-writes. Pause browser editing; Reload folder afterwards.',z.object({path:projectPath,project:projectSchema,expected_sha256:hash.optional()}).strict(),async({path:relative,project,expected_sha256})=>{if(!relative.endsWith('.json'))throw fail('INVALID_PROJECT','Use a .json project path.');model.validate(project);return write(relative,Buffer.from(JSON.stringify(project,null,2)),expected_sha256);},false);
 tool('partmap_apply_wiring','Apply a complete wiring result to project.json without extra components. Keeps exact component IDs/count, parents, quantities, pin/header IDs, positions and unrelated data. Pass the real current file hash. Requires --allow-writes.',z.object({project:projectSchema,expected_sha256:hash}).strict(),async({project,expected_sha256})=>{const current=await readProject();if(current.sha256!==expected_sha256)throw fail('REVISION_CONFLICT','Project changed after the agent read it.','Read the latest project and retry.');let next;try{next=model.wiring(current.project,project);}catch(error){throw fail('WIRING_REJECTED',error.message,'Keep all existing component, pin and header IDs. Re-read/re-export if the wiring snapshot is stale.');}return write('project.json',Buffer.from(JSON.stringify(next,null,2)),expected_sha256);},false);
 tool('partmap_read_file','Read project-local UTF-8 context/requirements in pages, with full file sha256. No repository metadata, secrets or traversal.',z.object({path:rel,start_line:z.number().int().min(1).default(1),line_count:z.number().int().min(1).max(300).default(100)}).strict(),async({path,start_line,line_count})=>{const r=await read(path);if(r.bytes.includes(0))throw fail('BINARY_FILE','Use text context files.');const lines=r.bytes.toString('utf8').split('\n'),content=lines.slice(start_line-1,start_line-1+line_count).join('\n');if(content.length>100000)throw fail('FILE_TOO_LARGE','Request fewer lines.');return {path,sha256:r.sha256,content,start_line,total_lines:lines.length,next_line:start_line+line_count<=lines.length?start_line+line_count:null};});
-tool('partmap_write_file','Create/update a project-local Markdown, text, CSV or output JSON file. Existing outputs require their actual file hash. Use write_project for the root project. Requires --allow-writes.',z.object({path:rel,content:z.string().max(2000000),expected_sha256:hash.optional()}).strict(),async({path:relative,content,expected_sha256})=>{if(relative.toLowerCase()==='project.json'||!(/\.(md|txt|csv|json)$/i).test(relative))throw fail('INVALID_OUTPUT','Use write_project for project.json; context/output files must be .md, .txt, .csv or .json.');if(relative.endsWith('.json')){let parsed;try{parsed=JSON.parse(content);}catch{throw fail('INVALID_OUTPUT','JSON output must be valid JSON.');}if(parsed?.nodes)model.validate(parsed);}return write(relative,Buffer.from(content),expected_sha256);},false);
-tool('partmap_export_project','Export a separate JSON/CSV snapshot or AI Markdown brief to stdout content or a project-local output. Never overwrites the source. output requires --allow-writes and existing destination hash.',z.object({path:projectPath,format:z.enum(['json','markdown','csv']).default('json'),output:rel.optional(),expected_sha256:hash.optional()}).strict(),async({path:relative,format,output,expected_sha256})=>{const p=await readProject(relative),content=format==='json'?JSON.stringify(p.project,null,2):format==='markdown'?model.brief(p.project):csv(p.project);if(!output)return {format,content};if(output===relative)throw fail('INVALID_OUTPUT','Export to a separate output file.');return {...await write(output,Buffer.from(content),expected_sha256),format};},false);
+tool('partmap_write_file','Create/update a project-local Markdown, text, CSV or output JSON file. Existing outputs require their actual file hash. Use write_project for the root project. Requires --allow-writes.',z.object({path:rel,content:z.string().max(2000000),expected_sha256:hash.optional()}).strict(),async({path:relative,content,expected_sha256})=>{relative=projectRelative(root,relative);if(relative.toLowerCase()==='project.json'||!(/\.(md|txt|csv|json)$/i).test(relative))throw fail('INVALID_OUTPUT','Use write_project for project.json; context/output files must be .md, .txt, .csv or .json.');if(relative.endsWith('.json')){let parsed;try{parsed=JSON.parse(content);}catch{throw fail('INVALID_OUTPUT','JSON output must be valid JSON.');}if(parsed?.nodes)model.validate(parsed);}return write(relative,Buffer.from(content),expected_sha256);},false);
+tool('partmap_export_project','Export a separate JSON/CSV snapshot or AI Markdown brief to stdout content or a project-local output. Never overwrites the source. output requires --allow-writes and existing destination hash.',z.object({path:projectPath,format:z.enum(['json','markdown','csv']).default('json'),output:rel.optional(),expected_sha256:hash.optional()}).strict(),async({path:relative,format,output,expected_sha256})=>{const p=await readProject(relative),content=format==='json'?JSON.stringify(p.project,null,2):format==='markdown'?model.brief(p.project):csv(p.project);if(!output)return {format,content};if(projectRelative(root,output).toLowerCase()===projectRelative(root,relative).toLowerCase())throw fail('INVALID_OUTPUT','Export to a separate output file.');return {...await write(output,Buffer.from(content),expected_sha256),format};},false);
 tool('partmap_export_diagnostics','Collect recent errors. save=true writes a shareable report in .partmap/mcp-diagnostics; if the project device rejects writes, save to the server log reports directory instead. Requires --allow-writes. Returns the actual absolute savedPath.',z.object({save:z.boolean().default(false)}).strict(),async({save})=>{
   const report=await diagnostics();if(!save)return report;needWrite();const id=crypto.randomUUID();
   try{const receipt=await write('.partmap/mcp-diagnostics/'+id+'.json',Buffer.from(JSON.stringify(report,null,2)),undefined,{internal:true});return {...receipt,savedPath:path.join(root,receipt.path),location:'project',report};}

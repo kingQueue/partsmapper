@@ -110,3 +110,7 @@ Run `npm test` for all studio checks and real MCP stdio integration tests, or `n
 Protocol reference: [official MCP SDK server documentation](https://ts.sdk.modelcontextprotocol.io/server). The implementation uses the SDK’s stdio transport and tool schemas; project access, tests and diagnostic files are specific to Partmap.
 
 On Windows, a generic UNKNOWN filesystem error can hide a device-level failure. The observed E: incident returned native Windows error 433 (a device which does not exist was specified), while equivalent C: creation worked. Do not treat that as a missing MCP grant. Preserve readable data, record any unreadable files, and explicitly select/reassign a verified working directory. The intentional INVALID_ARGUMENTS errorProbe in access-test output is expected; the proof and diagnostic results determine actual access.
+
+### Windows path spelling
+
+Tools accept project-relative paths with forward or backward slashes and absolute paths that resolve inside the configured project. On Windows, a single leading slash is a project-root alias: when the root is D:\part_map_demo, /wiring-handoff/project.json resolves to its wiring-handoff/project.json. It does not refer to the drive root. Cross-drive paths, sibling-folder paths, parent traversal, UNC/device paths, protected metadata and links remain blocked. Relative paths are still the clearest choice. Changes do not extend the configured project scope.
