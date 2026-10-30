@@ -1,4 +1,4 @@
-const fs=require('fs/promises'),path=require('path'),os=require('os'),{execFile}=require('child_process');
+const fs=require('fs/promises'),path=require('path'),os=require('os');
 const store=require('./project-store.cjs'),model=require('./mcp/model.cjs');
 const fail=(message,status=400)=>Object.assign(Error(message),{status});
 const home=path.join(os.homedir(),'Documents','Partmap Projects');
@@ -16,7 +16,7 @@ async function list(config){
   let current=null,currentError=null;try{current=await store.selected(config);}catch(error){currentError=error.message;}
   const recent=await registry(config),paths=[...(current?[current.directory]:[]),...recent.map(p=>p.directory)],unique=[...new Map(paths.map(p=>[p.toLowerCase(),p])).values()];
   const projects=await Promise.all(unique.map(async directory=>({...await describe(directory),lastOpened:recent.find(p=>p.directory.toLowerCase()===directory.toLowerCase())?.lastOpened||null,current:current?.directory.toLowerCase()===directory.toLowerCase()})));
-  return {projects,currentId:current?.id||null,currentDirectory:current?.directory||null,currentError,defaultParent:home,nativeBrowse:process.platform==='win32'};
+  return {projects,currentId:current?.id||null,currentDirectory:current?.directory||null,currentError,defaultParent:home,browseMode:'in-app'};
 }
 function absolute(value){if(typeof value!=='string'||!value.trim()||!path.isAbsolute(value.trim()))throw fail('Enter an absolute local folder path.');return path.resolve(value.trim());}
 async function checkCurrent(config,body){
@@ -40,12 +40,16 @@ async function activate(config,body){
   }else throw fail('Choose create or open.');
   const entry=await describe(directory);try{if(previous&&previous.directory!==entry.directory){const old=await describe(previous.directory);if(old.available)await remember(config,old);}await remember(config,entry);}catch(error){entry.warning='Project opened, but recent history could not be saved: '+error.message;}return entry;
 }
-async function browseFolder(initialDirectory){
-  if(process.platform!=='win32')throw fail('Native browsing is available on Windows. Enter the folder path instead.');
-  const initial=initialDirectory?absolute(initialDirectory):home;
-  return new Promise((resolve,reject)=>execFile('powershell.exe',['-NoProfile','-STA','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'Partmap-Pick-Folder.ps1')],{windowsHide:true,encoding:'utf8',timeout:300000,env:{...process.env,PARTMAP_PICK_INITIAL:initial}},(error,stdout)=>{
-    if(error)return reject(fail('Folder browser could not open. Enter the path manually. '+error.message));
-    try{resolve(JSON.parse(stdout.trim().replace(/^\uFEFF/,'')));}catch{reject(fail('The folder browser returned an invalid response. Enter the path manually.'));}
-  }));
+async function folders(value){
+  let directory=value?absolute(value):home;
+  // A first-run default save location may not exist yet. Start at its existing parent.
+  while(true){
+    try{if(!(await fs.stat(directory)).isDirectory())throw fail('Choose a directory.');break;}
+    catch(error){const parent=path.dirname(directory);if(error.code!=='ENOENT'||parent===directory)throw error;directory=parent;}
+  }
+  directory=await fs.realpath(directory);
+  const entries=(await fs.readdir(directory,{withFileTypes:true})).filter(e=>e.isDirectory()&&!e.name.startsWith('.')).sort((a,b)=>a.name.localeCompare(b.name)).slice(0,500).map(e=>({name:e.name,directory:path.join(directory,e.name)}));
+  const drives=process.platform==='win32'?(await Promise.all('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(async letter=>{const root=letter+':\\';try{return (await fs.stat(root)).isDirectory()?{name:letter+':',directory:root}:null;}catch{return null;}}))).filter(Boolean):[{name:'Filesystem',directory:path.parse(directory).root}];
+  return {directory,parent:path.dirname(directory)===directory?null:path.dirname(directory),entries,drives,limit:500};
 }
-module.exports={list,activate,browseFolder,describe};
+module.exports={list,activate,folders,describe};

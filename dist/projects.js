@@ -23,10 +23,35 @@ async function openProjectManager(){
       folderLoading=true;clearTimeout(folderTimer);folderPending=false;find('#projectManagerProgress').textContent='Opening '+result.name+'…';location.reload();
     }catch(e){error(e.message);find('#managerRecovery').hidden=!folderBlocked;loading(false);}
   }
+  let folderPicker=null,folderTarget=null,folderState=null;
+  function closeFolderPicker(){if(folderPicker)folderPicker.hidden=true;dialog.querySelector('.project-manager-grid').hidden=false;}
+  async function navigateFolder(directory){
+    if(working)return;error('');loading(true,'Loading folders...');
+    try{
+      const next=await folderApi('/api/projects/folders',{directory});folderState=next;
+      folderPicker.querySelector('#folderAddress').value=next.directory;
+      folderPicker.querySelector('#folderDrives').innerHTML=next.drives.map((d,i)=>`<button class="button" data-drive="${i}">${esc(d.name)}</button>`).join('');
+      folderPicker.querySelector('#folderEntries').innerHTML=next.entries.length?next.entries.map((d,i)=>`<button class="folder-entry" data-directory="${i}"><span aria-hidden="true">&#128193;</span><span>${esc(d.name)}</span><span aria-hidden="true">&rsaquo;</span></button>`).join(''):'<p class="muted">No subfolders here. You can use this folder or go up.</p>';
+      for(const button of folderPicker.querySelectorAll('[data-drive]'))button.onclick=()=>navigateFolder(folderState.drives[Number(button.dataset.drive)].directory);
+      for(const button of folderPicker.querySelectorAll('[data-directory]'))button.onclick=()=>navigateFolder(folderState.entries[Number(button.dataset.directory)].directory);
+      folderPicker.querySelector('#folderUp').onclick=()=>folderState.parent&&navigateFolder(folderState.parent);
+      folderPicker.querySelector('#useSelectedFolder').onclick=()=>{find(folderTarget).value=folderState.directory;preview();closeFolderPicker();};
+    }catch(e){if(folderState)folderPicker.querySelector('#folderAddress').value=folderState.directory;error('Could not browse that folder: '+e.message);}
+    finally{loading(false);folderPicker.querySelector('#folderUp').disabled=!folderState?.parent;folderPicker.querySelector('#useSelectedFolder').disabled=!folderState;}
+  }
   async function browse(target){
-    if(working)return;error('');loading(true,'Choose a folder in the Windows folder browser…');
-    try{const result=await folderApi('/api/projects/browse',{initialDirectory:find(target).value||listing.defaultParent});if(result.directory){find(target).value=result.directory;preview();}}
-    catch(e){error(e.message);}finally{loading(false);}
+    if(working)return;folderTarget=target;
+    if(!folderPicker){
+      folderPicker=document.createElement('section');folderPicker.className='project-folder-picker';folderPicker.setAttribute('aria-label','Local folder browser');
+      folderPicker.innerHTML='<h3 id="folderPickerTitle">Choose a folder</h3><div id="folderDrives" class="folder-drives"></div><div class="folder-address"><button class="button" id="folderUp" type="button">Up</button><input id="folderAddress" aria-label="Folder location"><button class="button" id="folderGo" type="button">Go</button></div><div id="folderEntries" class="folder-entries"></div><div class="folder-picker-actions"><button class="button" id="cancelFolderBrowse" type="button">Cancel</button><button class="button primary" id="useSelectedFolder" type="button">Use this folder</button></div>';
+      dialog.querySelector('.project-manager-grid').before(folderPicker);
+      folderPicker.querySelector('#cancelFolderBrowse').onclick=closeFolderPicker;
+      folderPicker.querySelector('#folderGo').onclick=()=>navigateFolder(folderPicker.querySelector('#folderAddress').value);
+      folderPicker.querySelector('#folderAddress').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();navigateFolder(e.target.value);}};
+    }
+    folderPicker.hidden=false;folderPicker.querySelector('#folderPickerTitle').textContent=target==='#openProjectDirectory'?'Open a project folder':'Choose where to save your project';
+    dialog.querySelector('.project-manager-grid').hidden=true;
+    await navigateFolder(find(target).value||listing.currentDirectory||listing.defaultParent);
   }
   find('#openLocalProject').onclick=()=>switchProject({action:'open',directory:find('#openProjectDirectory').value});
   find('#createLocalProject').onclick=()=>switchProject({action:'create',name:find('#newProjectName').value,parent:find('#newProjectParent').value});
@@ -36,7 +61,7 @@ async function openProjectManager(){
     listing=await folderApi('/api/projects');folderToken=listing.token;
     find('#managerCurrent').textContent='Active folder: '+(listing.currentDirectory||'Browser-only project');find('#newProjectParent').value=listing.defaultParent;
     find('#managerRecovery').hidden=!folderBlocked;preview();renderRecentProjects();
-    find('#browseOpenProject').hidden=find('#browseProjectParent').hidden=!listing.nativeBrowse;
+
   }catch(e){error('Local project management is unavailable. Run Partmap using its local server. '+e.message);for(const button of dialog.querySelectorAll('button:not([data-dismiss])'))button.disabled=true;}
 }
 function initializeProjectManager(){

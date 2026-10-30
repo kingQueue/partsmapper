@@ -2,7 +2,7 @@ const fs=require('fs/promises'),path=require('path'),os=require('os'),assert=req
 const store=require('./project-store.cjs'),manager=require('./project-manager.cjs'),{createPartmapServer}=require('./preview.cjs');
 (async()=>{
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'partmap-manager-test-')),config=path.join(temp,'runtime','selection.json');
-  const server=createPartmapServer({config,browseFolder:async()=>({directory:temp,cancelled:false})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const server=createPartmapServer({config});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
   let token;
   async function request(route,body,extra={}){const response=await fetch(base+route,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-Partmap-Token':token,...extra}:extra,body:body?JSON.stringify(body):undefined});return {status:response.status,data:await response.json()};}
   try{
@@ -11,7 +11,9 @@ const store=require('./project-store.cjs'),manager=require('./project-manager.cj
     const created=await request('/api/projects/activate',{action:'create',name:'Robot alpha',parent:temp});assert.equal(created.status,200);assert.equal(created.data.components,0);
     let current=await store.readWorkspace(config);assert.equal(current.project.name,'Robot alpha');assert.deepEqual(current.project.nodes,[]);
     const guard=()=>({currentId:current.id,currentDirectory:current.directory,currentRevision:current.revision});
-    assert.equal((await request('/api/projects/browse',{initialDirectory:temp})).data.directory,temp);
+    const folders=await request('/api/projects/folders',{directory:temp});assert.equal(folders.status,200);assert.equal(folders.data.directory,temp);assert.ok(folders.data.entries.some(e=>e.name==='Robot alpha'));assert.ok(folders.data.drives.length);
+    assert.equal((await request('/api/projects/folders',{directory:temp},{'X-Partmap-Token':'wrong'})).status,403);
+    assert.equal((await request('/api/projects/folders',{directory:path.join(temp,'not-created-yet')})).data.directory,temp);
     assert.equal((await request('/api/projects/activate',{...guard(),action:'create',name:'Robot alpha',parent:temp})).status,409);
     assert.equal((await request('/api/projects/activate',{...guard(),action:'create',name:'../escape',parent:temp})).status,400);
     const other=path.join(temp,'Existing');await fs.mkdir(other);await fs.writeFile(path.join(other,'project.json'),JSON.stringify({name:'Existing project',nodes:[]}));

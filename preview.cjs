@@ -7,7 +7,7 @@ const manager = require('./project-manager.cjs');
 const crypto = require('crypto');
 const root = path.join(__dirname, 'dist');
 const types = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.csv': 'text/csv', '.txt': 'text/plain', '.md': 'text/markdown' };
-function createPartmapServer({config=store.DEFAULT_CONFIG,browseFolder=manager.browseFolder}={}) {
+function createPartmapServer({config=store.DEFAULT_CONFIG}={}) {
 const token=crypto.randomBytes(32).toString('hex');let writes=Promise.resolve();
 const server = http.createServer(async (req, res) => {
   let pathname;
@@ -26,7 +26,7 @@ const server = http.createServer(async (req, res) => {
       if(pathname==='/api/workspace'&&req.method==='GET')return reply(200,{...(await store.readWorkspace(config)),token});
       if(req.method!=='POST'||req.headers['x-partmap-token']!==token||!String(req.headers['content-type']).startsWith('application/json'))return reply(403,{error:'Invalid project request.'});
       const chunks=[];let size=0;for await (const chunk of req){size+=chunk.length;if(size>64*1024*1024)throw Object.assign(Error('Project request exceeds 64 MB.'),{status:413});chunks.push(chunk);}const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if(pathname==='/api/projects/browse')return reply(200,await browseFolder(body.initialDirectory));
+      if(pathname==='/api/projects/folders')return reply(200,await manager.folders(body.directory));
       const operation=pathname==='/api/projects/activate'?()=>manager.activate(config,body):pathname==='/api/workspace/save'?()=>store.saveWorkspace(config,body):pathname==='/api/workspace/export'?()=>store.saveExport(config,body):null;
       if(!operation)return reply(404,{error:'Unknown project operation.'});
       const result=writes.then(operation);writes=result.catch(()=>{});return reply(200,await result);

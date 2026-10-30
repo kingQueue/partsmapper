@@ -104,7 +104,7 @@ See [MCP-SETUP.md](MCP-SETUP.md) for the local stdio server, client configuratio
 
 ## Manage projects inside Partmap
 
-Click **Projects** in the left navigation or top bar. Search recent projects, open a local directory containing project.json, or create a named project in a chosen parent folder. **Browse** opens the native Windows folder picker; typing an absolute path also works. A new project starts empty and autosaves all project files into its new directory. Existing directories are not replaced during creation.
+Click **Projects** in the left navigation or top bar. Search recent projects, open a local directory containing project.json, or create a named project in a chosen parent folder. **Browse** opens a folder picker inside Partmap with drive buttons, an address bar, Up navigation and Use this folder. Typing an absolute path also works. A new project starts empty and autosaves all project files into its new directory. Existing directories are not replaced during creation.
 
 Switching saves pending edits first. If external edits or a disk error paused saving, reload the current folder or explicitly choose to keep a browser recovery copy and switch without saving. Other tabs are protected by active-folder and revision checks. Recents are stored locally beside the launcher's runtime configuration; there is no cloud account or project upload.
 
