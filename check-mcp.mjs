@@ -60,7 +60,7 @@ try{
   for(const r of invalid)assert.equal((await call(rw,'partmap_connect',{...patch,connections:[r]})).error.code,'WIRING_REJECTED');
   assert.equal((await call(rw,'partmap_connect',{...patch,connections:[route,{...route,from:route.to,to:route.from}]})).error.code,'WIRING_REJECTED');
   assert.equal((await call(rw,'partmap_wiring_context')).expected_sha256,context.expected_sha256);
-  const connected=await call(rw,'partmap_connect',patch);assert.equal(connected.verified,true,JSON.stringify(connected));assert.equal(connected.added,1);assert.equal(connected.blocked,1);assert.deepEqual(connected.warnings,[]);
+  const connected=await call(rw,'partmap_connect',patch);assert.equal(connected.verified,true,JSON.stringify(connected));assert.equal(connected.added,1);assert.equal(connected.blocked,1);assert.equal(connected.contextUpdated,true);assert.equal(connected.totalConnections,1);assert.equal(connected.projectFile,path.join(project,'project.json'));assert.equal(connected.openProjectDirectory,project);assert.deepEqual(connected.warnings,[]);
   const after=await call(rw,'partmap_read_project');assert.deepEqual(after.project.nodes.map(n=>n.id),fixtureProject.nodes.map(n=>n.id));assert.deepEqual(after.project.customPreserved,{test:true});assert.deepEqual(after.project.nodes[1].positions,target.positions);assert.ok(after.project.requirementsDocument.markdown.includes('Supply and logic voltage unknown'));
   const nextContext=await call(rw,'partmap_wiring_context');assert.equal(nextContext.contextFileMatches,true);assert.equal(nextContext.context.components[0].connections.length,1);
   const repeatedConnect=await call(rw,'partmap_connect',{...patch,expected_sha256:nextContext.expected_sha256});assert.equal(repeatedConnect.added,0);assert.equal(repeatedConnect.unchanged,1);
@@ -68,7 +68,7 @@ try{
   assert.equal((await call(rw,'partmap_validate_project')).valid,true);
   // Test path targeting separately from root: two real projects must never be confused.
   await fs.mkdir(path.join(project,'handoff'));await fs.writeFile(path.join(project,'handoff','project.json'),JSON.stringify(seed));
-  const nested=await call(rw,'partmap_wiring_context',{path:'handoff/project.json'});assert.equal(nested.path,'handoff/project.json');assert.equal(nested.projectName,seed.name);
+  const nested=await call(rw,'partmap_wiring_context',{path:'handoff/project.json'});assert.equal(nested.path,'handoff/project.json');assert.equal(nested.projectName,seed.name);assert.equal(nested.projectFile,path.join(project,'handoff','project.json'));assert.equal(nested.openProjectDirectory,path.join(project,'handoff'));
   assert.equal((await call(rw,'partmap_wiring_context')).projectName,updated.name);
   }
   assert.equal((await call(rw,'partmap_write_file',{path:'project.json',content:'{}'})).error.code,'INVALID_OUTPUT');
