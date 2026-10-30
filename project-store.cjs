@@ -1,4 +1,5 @@
 const fs=require('fs/promises'),path=require('path'),crypto=require('crypto');
+const wiringContext=require('./dist/wiring-context.js');
 const DEFAULT_CONFIG=path.join(__dirname,'.partmap-runtime','project-selection.json');
 function problem(message,status=400){return Object.assign(new Error(message),{status});}
 function leaf(name){if(typeof name!=='string'||!name||name.length>160||/[<>:"/\\|?*\x00-\x1f]/.test(name)||/[. ]$/.test(name)||/^\.{1,2}$/.test(name)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name))throw problem('Invalid project filename.');return name;}
@@ -33,6 +34,7 @@ async function saveWorkspace(config,body){
   const projectText=JSON.stringify(body.project,null,2),previous=await optional(await safePath(workspace.directory,'project.json'));
   if(previous&&previous.toString('utf8')!==projectText&&Date.now()-(lastBackup.get(workspace.id)||0)>60000){await atomic(workspace.directory,`.partmap/backups/project-${new Date().toISOString().replace(/[:.]/g,'-')}.json`,previous);lastBackup.set(workspace.id,Date.now());}
   await atomic(workspace.directory,'project.json',projectText);
+  await atomic(workspace.directory,'wiring-context.json',wiringContext.text(body.project));
   await atomic(workspace.directory,'ai-brief.md',body.brief);
   await atomic(workspace.directory,'missing-requirements.md',body.project.requirementsDocument?.markdown||'# Missing requirements\n\nNo review has been attached yet. Inspect project.json before completing wiring.\n');
   await atomic(workspace.directory,'component-library.json',JSON.stringify(body.library||{format:'partmap.component-library',version:1,components:[]},null,2));
@@ -50,8 +52,8 @@ async function saveExport(config,body){
   const workspace=await selected(config);if(!workspace||workspace.id!==body.workspaceId)throw problem('The selected project folder changed. Reload before exporting.',409);
   const name=leaf(body.name);if(typeof body.base64!=='string'||!/^[A-Za-z0-9+/=]*$/.test(body.base64))throw problem('Invalid export data.');
   if(body.files){
-    const allowed=new Set(['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md']);
-    if(!Array.isArray(body.files)||body.files.length!==5||new Set(body.files.map(f=>f.name)).size!==5||body.files.some(f=>!allowed.has(f.name)||typeof f.text!=='string'))throw problem('Invalid wiring handoff files.');
+    const allowed=new Set(['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md','wiring-context.json']);
+    if(!Array.isArray(body.files)||![5,6].includes(body.files.length)||new Set(body.files.map(f=>f.name)).size!==body.files.length||!['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md'].every(name=>body.files.some(f=>f.name===name))||body.files.some(f=>!allowed.has(f.name)||typeof f.text!=='string'))throw problem('Invalid wiring handoff files.');
   }
   await atomic(workspace.directory,'exports/'+name,Buffer.from(body.base64,'base64'));
   if(body.files)for(const f of body.files)await atomic(workspace.directory,'wiring-handoff/'+f.name,f.text);
@@ -64,8 +66,9 @@ async function selectProject(directory,{create=false,name,config=DEFAULT_CONFIG}
   if(existing&&(!Array.isArray(existing.nodes)||typeof existing.name!=='string'))throw problem('This project.json is not a Partmap project. No files were replaced.');
   if(!existing&&!create)throw problem('Choose a folder containing project.json, or use Create new project.');
   if(!existing){const project={schemaVersion:'2.0',name:name||path.basename(directory),nodes:[],baseline:[],history:[],partsChecklist:[],pcb:null,requirementsDocument:null,wiringTask:null};await atomic(directory,'project.json',JSON.stringify(project,null,2));}
+  await atomic(directory,'wiring-context.json',wiringContext.text(existing||{name:name||path.basename(directory),nodes:[]}));
   if(!marker){marker={format:'partmap.project-folder',version:1,id:crypto.randomUUID(),createdAt:new Date().toISOString()};await atomic(directory,'.partmap-project.json',JSON.stringify(marker,null,2));}
-  await atomic(directory,'PROJECT-README.md','# Partmap project folder\n\nproject.json is the main project. The app autosaves it here. ai-brief.md, missing-requirements.md, component-library.json and pcb-sketch.json are refreshed with saves. Reference uploads are extracted under references/. Exports go under exports/. Auto complete wiring also writes an unpacked wiring-handoff/ folder for agents.\n\nAgents: read wiring-handoff/agent-prompt.md and its project.json when present. Write results alongside those snapshots, without adding component copies; apply results through Update wiring in the app. Do not overwrite the root project.json while the browser is editing it. Disk conflicts are detected rather than silently overwritten. Backups are kept under .partmap/backups/.\n');
+  await atomic(directory,'PROJECT-README.md','# Partmap project folder\n\nproject.json is the main project. The app autosaves it here. wiring-context.json is the compact electrical view, refreshed with each app save. ai-brief.md, missing-requirements.md, component-library.json and pcb-sketch.json are also refreshed with saves. Reference uploads are extracted under references/. Exports go under exports/. Auto complete wiring also writes an unpacked wiring-handoff/ folder for agents.\n\nAgents: read wiring-handoff/agent-prompt.md and wiring-context.json first when present. Handoffs are snapshots: re-export after changing boards or pins. Read the full project.json only when applying edits or consulting omitted data. Never replace project.json with the compact view. Write results alongside those snapshots, without adding component copies; apply results through Update wiring in the app. Do not overwrite the root project.json while the browser is editing it. Disk conflicts are detected rather than silently overwritten. Backups are kept under .partmap/backups/.\n');
   await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   return {directory,id:marker.id};
 }

@@ -109,3 +109,11 @@ Click **Projects** in the left navigation or top bar. Search recent projects, op
 Switching saves pending edits first. If external edits or a disk error paused saving, reload the current folder or explicitly choose to keep a browser recovery copy and switch without saving. Other tabs are protected by active-folder and revision checks. Recents are stored locally beside the launcher's runtime configuration; there is no cloud account or project upload.
 
 This manager requires the included local server. The Character Room embedded studio remains scoped to the chat's assigned project directory; select chat projects through Character Room's existing folder assignment controls. Opening a different standalone project does not silently reassign agent chats or external MCP client folders.
+
+### Compact wiring context
+
+`wiring-context.json` is a derived electrical view, refreshed in the selected local folder on open and every autosave. It is also included in Auto complete wiring ZIPs and the unpacked `wiring-handoff` alongside the complete `project.json`. Re-export to refresh a handoff snapshot after changing the map.
+
+Agents should read `agent-prompt.md`, `wiring-context.json` with their text-file reader, and `missing-requirements.md` first. The view retains component/pin/header IDs, specs, notes, firmware notes, assembly parents, existing connections and attachment metadata. It excludes layout, baseline/checklist/PCB copies and attachment payloads. Components with pins or connections and their ancestors are included even if categorized as mechanical. Missing electrical specifications are never inferred.
+
+This is an analysis input, not an importable project. Before applying edits, agents still need the current full project and its actual hash to preserve unrelated data and detect concurrent changes. Never overwrite `project.json` with the compact view. Analysis of a large pin inventory may still require paged reads.

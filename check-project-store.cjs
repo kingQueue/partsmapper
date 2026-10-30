@@ -7,11 +7,15 @@ const store=require('./project-store.cjs'),{createPartmapServer}=require('./prev
     const project={...initial.project,nodes:[{id:'controller',name:'Controller',parent:null,category:'board',quantity:1,pins:[],pinSections:[],connections:[],attachments:[{name:'reference.txt',data:'data:text/plain;base64,aGVsbG8='}]}],requirementsDocument:{name:'missing-requirements.md',markdown:'# Missing\nPower supply.',updatedAt:'2026-10-28'}};
     const body={workspaceId:initial.id,expectedRevision:initial.revision,project,brief:'# AI brief',library:{components:[]}};
     let saved=await store.saveWorkspace(config,body);assert.equal(JSON.parse(await fs.readFile(path.join(directory,'project.json'),'utf8')).nodes.length,1);
+    assert.equal(JSON.parse(await fs.readFile(path.join(directory,'wiring-context.json'),'utf8')).components[0].id,'controller');
+    project.nodes[0].pins=[{id:'power',name:'VCC',section:'main'}];
+    saved=await store.saveWorkspace(config,{...body,expectedRevision:saved.revision});
+    assert.equal(JSON.parse(await fs.readFile(path.join(directory,'wiring-context.json'),'utf8')).components[0].pins[0].id,'power');
     assert.equal(await fs.readFile(path.join(directory,'missing-requirements.md'),'utf8'),project.requirementsDocument.markdown);assert.equal(await fs.readFile(path.join(directory,'ai-brief.md'),'utf8'),'# AI brief');
     const references=JSON.parse(await fs.readFile(path.join(directory,'references/index.json'),'utf8'));assert.equal(references.length,1);assert.equal(await fs.readFile(path.join(directory,references[0].path),'utf8'),'hello');
     await assert.rejects(()=>store.saveWorkspace(config,body),/changed on disk/);
     await store.saveExport(config,{workspaceId:initial.id,name:'report.md',base64:Buffer.from('report').toString('base64')});assert.equal(await fs.readFile(path.join(directory,'exports/report.md'),'utf8'),'report');
-    const files=['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md'].map(name=>({name,text:name}));await store.saveExport(config,{workspaceId:initial.id,name:'handoff.zip',base64:'UEs=',files});assert.equal(await fs.readFile(path.join(directory,'wiring-handoff/agent-prompt.md'),'utf8'),'agent-prompt.md');
+    const files=['project.json','agent-prompt.md','agent-command.txt','missing-requirements.md','README.md','wiring-context.json'].map(name=>({name,text:name}));await store.saveExport(config,{workspaceId:initial.id,name:'handoff.zip',base64:'UEs=',files});assert.equal(await fs.readFile(path.join(directory,'wiring-handoff/agent-prompt.md'),'utf8'),'agent-prompt.md');
     await assert.rejects(()=>store.saveExport(config,{workspaceId:initial.id,name:'../escape.txt',base64:''}),/filename/);
     await assert.rejects(()=>store.saveExport(config,{workspaceId:initial.id,name:'invalid.zip',base64:'',files:[{name:'../escape.txt',text:'x'}]}),/handoff/);await assert.rejects(()=>fs.access(path.join(directory,'exports/invalid.zip')));
     await fs.writeFile(path.join(directory,'missing-requirements.md'),'# Agent updated requirements');const external=await store.readWorkspace(config);assert.equal(external.project.requirementsDocument.markdown,'# Agent updated requirements');await assert.rejects(()=>store.saveWorkspace(config,{...body,expectedRevision:saved.revision}),/changed on disk/);

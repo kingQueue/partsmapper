@@ -5,7 +5,7 @@ const elements=new Map();
 const element=s=>{if(!elements.has(s))elements.set(s,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:''});return elements.get(s);};
 const context={document:{querySelector:element,querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},structuredClone,crypto:crypto.webcrypto,console:{log(){},warn(){},error(){}},setTimeout:()=>0,clearTimeout(){},performance,TextEncoder,Blob};
 vm.createContext(context);
-for(const name of ['app','studio','hardware','clipboard','workbench','assembly','wiring-handoff','wiring-guard']){
+for(const name of ['app','studio','hardware','clipboard','workbench','assembly','wiring-context','wiring-handoff','wiring-guard']){
   const source=fs.readFileSync(path.join(root,name+'.js'),'utf8').replace(/\n(?:render\(\)|initializeHardware\(\)|initializeComponentClipboard\(\)|initializeWorkbench\(\)|initializeAssembly\(\)|initializeWiringHandoff\(\));\s*$/,'');
   vm.runInContext(source,context,{timeout:2000,filename:name+'.js'});
 }
