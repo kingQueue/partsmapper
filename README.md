@@ -100,3 +100,12 @@ The app is intended for local use. Pushing source changes to this repository doe
 ## Agent access through MCP
 
 See [MCP-SETUP.md](MCP-SETUP.md) for the local stdio server, client configuration, agent access-proof sequence and shareable error logs. Run npm ci once, then use option 9 in the Windows launcher or Partmap-MCP-Test.cmd to verify the selected project without changing its hardware map.
+
+
+## Manage projects inside Partmap
+
+Click **Projects** in the left navigation or top bar. Search recent projects, open a local directory containing project.json, or create a named project in a chosen parent folder. **Browse** opens the native Windows folder picker; typing an absolute path also works. A new project starts empty and autosaves all project files into its new directory. Existing directories are not replaced during creation.
+
+Switching saves pending edits first. If external edits or a disk error paused saving, reload the current folder or explicitly choose to keep a browser recovery copy and switch without saving. Other tabs are protected by active-folder and revision checks. Recents are stored locally beside the launcher's runtime configuration; there is no cloud account or project upload.
+
+This manager requires the included local server. The Character Room embedded studio remains scoped to the chat's assigned project directory; select chat projects through Character Room's existing folder assignment controls. Opening a different standalone project does not silently reassign agent chats or external MCP client folders.

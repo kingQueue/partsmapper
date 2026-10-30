@@ -14,6 +14,7 @@ async function selected(config=DEFAULT_CONFIG){
   const configData=await jsonFile(config);if(!configData?.directory)return null;
   const directory=await fs.realpath(configData.directory),marker=await jsonFile(await safePath(directory,'.partmap-project.json'));
   if(!marker?.id)throw problem('Selected folder is not a Partmap project. Open it from the CMD menu again.',409);
+  await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   return {directory,id:marker.id};
 }
 async function revision(workspace){const hash=crypto.createHash('sha256');for(const file of ['project.json','missing-requirements.md','component-library.json']){hash.update(file);hash.update(await optional(await safePath(workspace.directory,file))||'');}return hash.digest('hex');}
@@ -64,8 +65,8 @@ async function selectProject(directory,{create=false,name,config=DEFAULT_CONFIG}
   if(!existing&&!create)throw problem('Choose a folder containing project.json, or use Create new project.');
   if(!existing){const project={schemaVersion:'2.0',name:name||path.basename(directory),nodes:[],baseline:[],history:[],partsChecklist:[],pcb:null,requirementsDocument:null,wiringTask:null};await atomic(directory,'project.json',JSON.stringify(project,null,2));}
   if(!marker){marker={format:'partmap.project-folder',version:1,id:crypto.randomUUID(),createdAt:new Date().toISOString()};await atomic(directory,'.partmap-project.json',JSON.stringify(marker,null,2));}
-  await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   await atomic(directory,'PROJECT-README.md','# Partmap project folder\n\nproject.json is the main project. The app autosaves it here. ai-brief.md, missing-requirements.md, component-library.json and pcb-sketch.json are refreshed with saves. Reference uploads are extracted under references/. Exports go under exports/. Auto complete wiring also writes an unpacked wiring-handoff/ folder for agents.\n\nAgents: read wiring-handoff/agent-prompt.md and its project.json when present. Write results alongside those snapshots, without adding component copies; apply results through Update wiring in the app. Do not overwrite the root project.json while the browser is editing it. Disk conflicts are detected rather than silently overwritten. Backups are kept under .partmap/backups/.\n');
+  await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   return {directory,id:marker.id};
 }
 module.exports={DEFAULT_CONFIG,selected,readWorkspace,saveWorkspace,saveExport,selectProject,leaf,safePath};

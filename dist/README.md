@@ -118,3 +118,8 @@ Appending JSON that reuses current component IDs, or a tagged wiring result, is 
 Open the desktop Partmap Server menu. Option 6 creates a project directory; option 7 browses to an existing directory containing project.json; option 1 opens the app and option 8 opens the selected directory in Explorer. The folder banner shows autosave status and provides Save now and Reload folder. Project JSON, AI brief, requirements, component library, PCB sketch and extracted reference uploads are saved there. Downloads go to exports/. Auto complete wiring also writes its five agent input files to wiring-handoff/. Keep agent results there and apply them through Update wiring (no new components).
 
 Save before switching folders or closing. External changes to project.json, missing-requirements.md or component-library.json pause autosaves to prevent overwrites; use Reload folder to read disk changes. Browser recovery data and periodic disk backups remain available. Use one editing tab per folder. A generic static server has browser-only storage; disk saving requires the included preview.cjs server.
+
+
+## In-app project management
+
+Use Projects in the left rail or top bar to create a local project directory, browse to an existing project.json folder, or reopen/search recent projects. Pending changes save before switching. If saving is paused, explicitly preserve a browser recovery copy before switching without a save. New projects start with an empty map and their own library/PCB data. This feature uses the included localhost server; the embedded Character Room studio uses its assigned chat folder instead.

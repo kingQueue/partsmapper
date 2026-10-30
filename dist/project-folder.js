@@ -1,7 +1,7 @@
-let projectFolder=null,folderPending=false,folderSaving=null,folderTimer=null,folderBlocked=false,folderLoading=true,browserProjectBeforeFolder=null;
+let folderToken=null,projectFolder=null,folderPending=false,folderSaving=null,folderTimer=null,folderBlocked=false,folderLoading=true,browserProjectBeforeFolder=null;
 function folderStatus(message,error=false){const status=$('#folderSaveStatus');if(status){status.textContent=message;status.classList.toggle('folder-error',error);}if(projectFolder)$('#saveState').textContent=message;}
 async function folderApi(route,body){
-  const response=await fetch(route,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-Partmap-Token':projectFolder.token}:{},body:body?JSON.stringify(body):undefined});
+  const response=await fetch(route,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json','X-Partmap-Token':(projectFolder?.token||folderToken)}:{},body:body?JSON.stringify(body):undefined});
   const data=await response.json();if(!response.ok)throw Object.assign(Error(data.error||'Project folder request failed.'),{status:response.status});return data;
 }
 function scheduleFolderSave(){if(folderLoading||!projectFolder||folderBlocked)return;folderPending=true;clearTimeout(folderTimer);folderStatus('Saving to project folder…');folderTimer=setTimeout(()=>saveProjectFolder().catch(()=>{}),450);}
@@ -48,8 +48,8 @@ async function initializeProjectFolder(){
     const name=anchor.getAttribute('download')||new URL(anchor.href,location.href).pathname.split('/').pop();fetch(anchor.href).then(r=>{if(!r.ok)throw Error('Could not read the reference file.');return r.blob();}).then(blob=>saveFolderExport(blob,name)).catch(error=>toast(error.message));
   },true);
   try{
-    const context=await folderApi('/api/workspace');
-    if(!context.directory){$('#projectFolderPath').textContent='Browser-only mode — choose or create a project folder from Partmap Server on your desktop.';$('#saveFolderNow').disabled=true;$('#reloadFolder').hidden=true;folderLoading=false;return;}
+    const context=await folderApi('/api/workspace');folderToken=context.token;
+    if(!context.directory){$('#projectFolderPath').textContent='Browser-only mode — use Projects to open or create a local project folder.';$('#saveFolderNow').disabled=true;$('#reloadFolder').hidden=true;folderLoading=false;return;}
     const loaded=validate(context.project);browserProjectBeforeFolder=structuredClone(project);
     // Save a recovery copy before replacing this browser's cached project.
     const previousFolder=localStorage.getItem('partmap.activeFolderId.v1')||'browser';localStorage.setItem('partmap.folder-recovery.'+previousFolder,JSON.stringify(project));localStorage.setItem('partmap.activeFolderId.v1',context.id);
