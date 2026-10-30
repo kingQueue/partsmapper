@@ -8,7 +8,7 @@
     let size;do{size=ids.size;for(const n of inventory)if(ids.has(n.id)){if(n.parent)ids.add(n.parent);for(const c of n.connections||[])ids.add(c.target);}}while(size!==ids.size);
     return {
       format:'partmap.wiring-context',version:1,sourceFile:'project.json',name:project.name,
-      usage:'Derived read-only wiring view. Not a full project; never replace/import project.json with this file. Use stable component and pin IDs, not repeated pin labels. Read the current full project and its hash only when applying edits. Missing specs remain unknown; parent relationships are assembly intent, not electrical connections.',
+      usage:'Derived read-only wiring view. Not a full project; never replace/import project.json with this file. Use stable component and pin IDs, not repeated pin labels. Connected agents: use parts_wiring_context to obtain current compact data and its source hash, then parts_connect to apply small edits without reading a full project. Missing specs remain unknown; parent relationships are assembly intent, not electrical connections.',
       components:inventory.filter(n=>ids.has(n.id)).map(n=>({
         ...pick(n,['id','name','category','parent','quantity','model','voltage','interface','notes','firmware']),
         pinSections:(n.pinSections||[]).map(s=>({...s})),

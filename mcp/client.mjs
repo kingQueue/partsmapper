@@ -28,7 +28,7 @@ try{
     const diagnostics=await invoke('partmap_export_diagnostics',{save:allowWrites});
     result={ok:status.ok&&proof.ok&&proof.passed&&proof.projectUnchanged&&errorProbe.error?.code==='INVALID_ARGUMENTS'&&diagnostics.ok,tools:catalog.tools.map(t=>t.name),status,proof,errorProbe:{expectedError:true,...errorProbe},diagnostics};
   }else if(bridge){
-    const request=await stdin(),mapping={read:'partmap_read_project',write:'partmap_write_project',validate:'partmap_validate_project',analyze:'partmap_analyze_project',export:'partmap_export_project',self_test:'partmap_self_test',diagnostics:'partmap_export_diagnostics',status:'partmap_status'};
+    const request=await stdin(),mapping={wiring_context:'partmap_wiring_context',connect:'partmap_connect',read:'partmap_read_project',write:'partmap_write_project',validate:'partmap_validate_project',analyze:'partmap_analyze_project',export:'partmap_export_project',self_test:'partmap_self_test',diagnostics:'partmap_export_diagnostics',status:'partmap_status'};
     const name=mapping[request.command];if(!name)throw Error('Unsupported Character Room Partmap operation.');
     const input=request.arguments||{};if(input.expected_sha256==='')delete input.expected_sha256;if(!input.path&&['read','write','validate','analyze','export'].includes(request.command))input.path=await fs.stat(path.join(project,'project.json')).then(()=> 'project.json').catch(()=> 'parts.json');
     result=await invoke(name,input);

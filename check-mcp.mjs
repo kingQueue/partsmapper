@@ -19,7 +19,7 @@ const clients=[];
 async function connect(writable){const c=new Client({name:'integration-test',version:'1'}),t=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('./mcp/server.mjs',import.meta.url)),'--project',project,'--log-dir',logs,...(writable?['--allow-writes']:[])],stderr:'pipe'});let stderr='';t.stderr?.on('data',b=>stderr+=b);try{await c.connect(t,{timeout:10000});}catch(e){throw Error(e.message+'\n'+stderr);}clients.push(c);return c;}
 async function call(c,name,args={}){const r=await c.callTool({name,arguments:args});assert.ok(r.content[0].text);const body=JSON.parse(r.content[0].text);assert.deepEqual(r.structuredContent,body);if(!body.ok)assert.equal(r.isError,true);return body;}
 try{
-  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,11);
+  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,13);
   assert.ok(catalog.tools.every(t=>t.inputSchema.additionalProperties===false));
   assert.equal((await call(ro,'partmap_status')).allowWrites,false);
   assert.equal((await call(ro,'partmap_self_test')).passed,true);
@@ -44,6 +44,33 @@ try{
   const wiring={...updated,nodes:[...updated.nodes,{id:'copy',name:'Extra board',category:'board',quantity:1,parent:null}]};
   assert.equal((await call(rw,'partmap_apply_wiring',{project:wiring,expected_sha256:save.sha256})).error.code,'WIRING_REJECTED');
   const wire=await call(rw,'partmap_apply_wiring',{project:updated,expected_sha256:save.sha256});assert.equal(wire.verified,true);
+
+  {
+  // Narrow wiring edits never require the model to read/rebuild the full project.
+  const beforeContext=await call(rw,'partmap_wiring_context');assert.equal(beforeContext.projectName,updated.name);assert.ok(beforeContext.expected_sha256);assert.ok(!beforeContext.project);assert.equal(beforeContext.context.components[0].id,'board');
+  const target={id:'target',name:'Logic module',category:'peripheral',parent:'board',quantity:1,pins:[{id:'ground2',name:'GND',section:'main',type:'ground'},{id:'out',name:'OUT',section:'main',type:'digital'}],pinSections:[{id:'main',name:'Main',side:'left',parent:null}],connections:[],attachments:[],positions:{full:{x:320,y:420}}};
+  const currentForConnect=await call(rw,'partmap_read_project');const fixtureProject={...currentForConnect.project,nodes:[...currentForConnect.project.nodes,target],customPreserved:{test:true}};
+  const fixtureSave=await call(rw,'partmap_write_project',{project:fixtureProject,expected_sha256:currentForConnect.sha256});assert.equal(fixtureSave.ok,true,JSON.stringify(fixtureSave));
+  const context=await call(rw,'partmap_wiring_context');assert.equal(context.contextFileMatches,false);
+  const route={from:{component:'board',pin:'gnd'},to:{component:'target',pin:'ground2'},reason:'Documented shared ground in test fixture'};
+  const patch={expected_sha256:context.expected_sha256,connections:[route],blocked:[{component:'target',pins:['out'],needed:'Supply and logic voltage unknown'}],assumptions:['Fixture only, no physical validation']};
+  assert.equal((await call(ro,'partmap_connect',patch)).error.code,'READ_ONLY');
+  assert.equal((await call(rw,'partmap_connect',{...patch,expected_sha256:'0'.repeat(64)})).error.code,'REVISION_CONFLICT');
+  const invalid=[{...route,to:{component:'missing',pin:'x'}},{...route,to:route.from},{...route,to:{component:'target',pin:'out'}}];
+  for(const r of invalid)assert.equal((await call(rw,'partmap_connect',{...patch,connections:[r]})).error.code,'WIRING_REJECTED');
+  assert.equal((await call(rw,'partmap_connect',{...patch,connections:[route,{...route,from:route.to,to:route.from}]})).error.code,'WIRING_REJECTED');
+  assert.equal((await call(rw,'partmap_wiring_context')).expected_sha256,context.expected_sha256);
+  const connected=await call(rw,'partmap_connect',patch);assert.equal(connected.verified,true,JSON.stringify(connected));assert.equal(connected.added,1);assert.equal(connected.blocked,1);assert.deepEqual(connected.warnings,[]);
+  const after=await call(rw,'partmap_read_project');assert.deepEqual(after.project.nodes.map(n=>n.id),fixtureProject.nodes.map(n=>n.id));assert.deepEqual(after.project.customPreserved,{test:true});assert.deepEqual(after.project.nodes[1].positions,target.positions);assert.ok(after.project.requirementsDocument.markdown.includes('Supply and logic voltage unknown'));
+  const nextContext=await call(rw,'partmap_wiring_context');assert.equal(nextContext.contextFileMatches,true);assert.equal(nextContext.context.components[0].connections.length,1);
+  const repeatedConnect=await call(rw,'partmap_connect',{...patch,expected_sha256:nextContext.expected_sha256});assert.equal(repeatedConnect.added,0);assert.equal(repeatedConnect.unchanged,1);
+  const removal=await call(rw,'partmap_connect',{...patch,expected_sha256:repeatedConnect.sha256,connections:[],remove:[route]});assert.equal(removal.removed,1);
+  assert.equal((await call(rw,'partmap_validate_project')).valid,true);
+  // Test path targeting separately from root: two real projects must never be confused.
+  await fs.mkdir(path.join(project,'handoff'));await fs.writeFile(path.join(project,'handoff','project.json'),JSON.stringify(seed));
+  const nested=await call(rw,'partmap_wiring_context',{path:'handoff/project.json'});assert.equal(nested.path,'handoff/project.json');assert.equal(nested.projectName,seed.name);
+  assert.equal((await call(rw,'partmap_wiring_context')).projectName,updated.name);
+  }
   assert.equal((await call(rw,'partmap_write_file',{path:'project.json',content:'{}'})).error.code,'INVALID_OUTPUT');
   assert.equal((await call(rw,'partmap_write_file',{path:path.join(project,'project.json'),content:'{}'})).error.code,'INVALID_OUTPUT');
   assert.equal((await call(rw,'partmap_export_project',{output:path.join(project,'project.json')})).error.code,'INVALID_OUTPUT');
