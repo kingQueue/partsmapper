@@ -14,3 +14,6 @@ exports.validate=raw=>run('validate(mcpInput)',{mcpInput:structuredClone(raw)});
 exports.wiring=(current,incoming)=>run('applyWiringUpdate(mcpCurrent,mcpInput)',{mcpCurrent:structuredClone(current),mcpInput:structuredClone(incoming)});
 exports.handoff=raw=>run('project=validate(mcpInput);buildWiringHandoffFiles()',{mcpInput:structuredClone(raw)});
 exports.brief=raw=>run('project=validate(mcpInput);brief()',{mcpInput:structuredClone(raw)});
+
+exports.libraryTemplate=raw=>run('checkedTemplate(mcpInput)',{mcpInput:structuredClone(raw)});
+exports.defaultLibrary=()=>run('defaultComponentLibrary',{});

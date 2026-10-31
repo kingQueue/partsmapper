@@ -11,7 +11,7 @@ function saveProjectFolder(){
   folderSaving=(async()=>{
     while(folderPending){
       folderPending=false;const context=projectFolder,body={workspaceId:context.id,expectedRevision:context.revision,project:exportObject(),brief:brief(),library:{format:'partmap.component-library',version:1,components:allLibraryParts(),customIds:savedComponentLibrary.map(n=>n.id)}};
-      const result=await folderApi('/api/workspace/save',body);context.revision=result.revision;folderStatus('Saved to project folder');
+      const result=await folderApi('/api/workspace/save',body);context.revision=result.revision;context.projectRevision=result.projectRevision;folderStatus('Saved to project folder');
     }return true;
   })().catch(error=>{folderBlocked=true;folderPending=false;try{localStorage.setItem('partmap.folder-recovery.'+projectFolder.id,JSON.stringify(project));}catch{}folderStatus(error.message,true);toast(error.message);throw error;}).finally(()=>{folderSaving=null;});
   return folderSaving;

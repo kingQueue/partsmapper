@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {ComponentResearch} from './mcp/component-research.mjs';
 import {projectRelative} from './mcp/paths.mjs';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
@@ -19,7 +20,7 @@ const clients=[];
 async function connect(writable){const c=new Client({name:'integration-test',version:'1'}),t=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('./mcp/server.mjs',import.meta.url)),'--project',project,'--log-dir',logs,...(writable?['--allow-writes']:[])],stderr:'pipe'});let stderr='';t.stderr?.on('data',b=>stderr+=b);try{await c.connect(t,{timeout:10000});}catch(e){throw Error(e.message+'\n'+stderr);}clients.push(c);return c;}
 async function call(c,name,args={}){const r=await c.callTool({name,arguments:args});assert.ok(r.content[0].text);const body=JSON.parse(r.content[0].text);assert.deepEqual(r.structuredContent,body);if(!body.ok)assert.equal(r.isError,true);return body;}
 try{
-  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,14);
+  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,18);
   assert.ok(catalog.tools.every(t=>t.inputSchema.additionalProperties===false));
   assert.equal((await call(ro,'partmap_status')).allowWrites,false);
   assert.equal((await call(ro,'partmap_self_test')).passed,true);
@@ -47,6 +48,21 @@ try{
 
   {
   // Narrow wiring edits never require the model to read/rebuild the full project.
+  // A researched template is written only to the library, with retained evidence and headers.
+  const research=new ComponentResearch(await fs.realpath(project),path.join(path.dirname(fileURLToPath(import.meta.url)),'.partmap-runtime','component-research'),{validateUrl:async()=>{},fetcher:async url=>({url,type:'text/html',bytes:Buffer.from('<title>Manufacturer fixture</title><p>Example Devices publishes the Library Fixture board revision A with two ground contacts and documentation for SDKs and dimensions.</p>')})});
+  const citation=await research.read({url:'https://manufacturer.example/library-fixture'});
+  const fields=['identity','power','interfaces','pins','firmware','dimensions','specifications'];
+  const input={component:{name:'Library Fixture',manufacturer:'Example Devices',model:'Library Fixture',variant:'A',category:'board',description:'Research fixture only',voltage:'Fixture voltage',interface:'Fixture interface',firmware:'Fixture SDK',dimensions:{notes:'Not independently verified'},specifications:{processor:'Fixture only'},pin_count:2,pinSections:[{id:'left',name:'Left',side:'left'},{id:'right',name:'Right',side:'right'}],pins:[{id:'g1',number:'1',name:'GND',section:'left',type:'ground',functions:['ground'],notes:''},{id:'g2',number:'2',name:'GND',section:'right',type:'ground',functions:['ground'],notes:''}]},source_ids:[citation.source_id],evidence:fields.map(field=>({field,source_id:citation.source_id,quote:'Example Devices publishes the Library Fixture board revision A with two ground contacts and documentation for SDKs and dimensions.'})),unresolved:[]};
+  const initialLibrary=await call(rw,'partmap_component_library');assert.equal(initialLibrary.sha256,null);assert.equal(initialLibrary.components.length,6);
+  const originalSource=(await call(rw,'partmap_read_project')).sha256;
+  assert.equal((await call(ro,'partmap_save_library_component',input)).error.code,'READ_ONLY');
+  const addedLibrary=await call(rw,'partmap_save_library_component',input);assert.equal(addedLibrary.written,true,JSON.stringify(addedLibrary));assert.equal(addedLibrary.pinCount,2);assert.equal(addedLibrary.projectNodesChanged,false);
+  const duplicateLibrary=await call(rw,'partmap_save_library_component',input);assert.equal(duplicateLibrary.already_exists,true);assert.equal(duplicateLibrary.written,false);
+  const changedVariant={...input,component:{...input.component,variant:'B'}};
+  assert.equal((await call(rw,'partmap_save_library_component',changedVariant)).error.code,'READ_REQUIRED');
+  assert.equal((await call(rw,'partmap_save_library_component',{...changedVariant,expected_sha256:'0'.repeat(64)})).error.code,'REVISION_CONFLICT');
+  const libraryData=JSON.parse(await fs.readFile(path.join(project,'component-library.json'),'utf8'));const researched=libraryData.components.find(n=>n.id===addedLibrary.id);assert.equal(researched.pinSections.length,2);assert.equal(researched.pins[1].number,'2');assert.equal(researched.research.sources[0].url,citation.url);assert.ok(libraryData.customIds.includes(addedLibrary.id));
+  assert.equal((await call(rw,'partmap_read_project')).sha256,originalSource);
   const beforeContext=await call(rw,'partmap_wiring_context');assert.equal(beforeContext.projectName,updated.name);assert.ok(beforeContext.expected_sha256);assert.ok(!beforeContext.project);assert.equal(beforeContext.context.components[0].id,'board');
   const target={id:'target',name:'Logic module',category:'peripheral',parent:'board',quantity:1,pins:[{id:'ground2',name:'GND',section:'main',type:'ground'},{id:'out',name:'OUT',section:'main',type:'digital'}],pinSections:[{id:'main',name:'Main',side:'left',parent:null}],connections:[],attachments:[],positions:{full:{x:320,y:420}}};
   const currentForConnect=await call(rw,'partmap_read_project');const fixtureProject={...currentForConnect.project,nodes:[...currentForConnect.project.nodes,target],customPreserved:{test:true}};

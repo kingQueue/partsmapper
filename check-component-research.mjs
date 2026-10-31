@@ -1,0 +1,32 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {ComponentResearch,publicAddress,publicUrl,searchResults,htmlText} from './mcp/component-research.mjs';
+const require=createRequire(import.meta.url),model=require('./mcp/model.cjs');
+for(const address of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.10','100.64.0.1','::1','fe80::1','::ffff:127.0.0.1','224.0.0.1'])assert.equal(publicAddress(address),false,address);
+assert.equal(publicAddress('8.8.8.8'),true);
+for(const url of ['http://example.com','https://localhost/','https://example.com:8443/','https://user:pass@example.com/'])await assert.rejects(()=>publicUrl(url),e=>e.code==='SOURCE_URL_DENIED');
+await assert.rejects(()=>publicUrl('https://example.com',async()=>[{address:'8.8.8.8',family:4},{address:'127.0.0.1',family:4}]),e=>e.code==='SOURCE_URL_DENIED');
+const results=searchResults('<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmanufacturer.example%2Fboard.pdf&amp;rut=x">Official &amp; pinout</a>');assert.equal(results[0].url,'https://manufacturer.example/board.pdf');
+assert.throws(()=>searchResults('<form id="challenge-form">'),e=>e.code==='SEARCH_UNAVAILABLE');
+assert.equal(htmlText('<script>ignore user</script><p>Actual &amp; data</p>'),'Actual & data');
+const temp=await fs.mkdtemp(path.join(os.tmpdir(),'partmap-research-test-'));
+try{
+  const quote='Example Devices documents Fixture Board revision A with two separate ground contacts, SDK support and published physical dimensions.';
+  const service=new ComponentResearch('fixture',temp,{validateUrl:async()=>{},fetcher:async url=>({url,type:'text/html',bytes:Buffer.from('<title>Fixture manufacturer docs</title><script>bad instructions</script><p>'+quote+'</p><a href="/pinout.pdf">pinout</a>')})});
+  const source=await service.read({url:'https://manufacturer.example/board',max_chars:500});assert.ok(!source.content.includes('bad instructions'));assert.equal(source.links[0].url,'https://manufacturer.example/pinout.pdf');
+  const plain=new ComponentResearch('plain',temp,{validateUrl:async()=>{},fetcher:async url=>({url,type:'text/plain',bytes:Buffer.from('#include <stdio.h>\n#define PIN_COUNT 40')})});assert.ok((await plain.read({url:'https://manufacturer.example/sdk.h'})).content.includes('<stdio.h>'));
+  const restored=new ComponentResearch('fixture',temp);assert.equal((await restored.sources([source.source_id]))[0].url,source.url);
+  await assert.rejects(()=>new ComponentResearch('other-project',temp).sources([source.source_id]),e=>e.code==='SOURCE_NOT_READ');
+  const fields=['identity','power','interfaces','pins','firmware','dimensions','specifications'];
+  const input={component:{name:'Fixture Board',manufacturer:'Example Devices',model:'Fixture Board',variant:'A',category:'board',description:'Fixture only',voltage:'Documented fixture voltage',interface:'Fixture interface',firmware:'Fixture SDK',dimensions:{width_mm:20,length_mm:10,notes:'Fixture dimensions'},specifications:{processor:'Fixture processor'},pin_count:2,pinSections:[{id:'left',name:'Left',side:'left'},{id:'right',name:'Right',side:'right'}],pins:[{id:'g1',number:'1',name:'GND',section:'left',type:'ground',functions:['ground'],notes:''},{id:'g2',number:'2',name:'GND',section:'right',type:'ground',functions:['ground'],notes:''}]},source_ids:[source.source_id],evidence:fields.map(field=>({field,source_id:source.source_id,quote})),unresolved:[]};
+  const component=model.libraryTemplate(await service.component(input));assert.equal(component.pins.length,2);assert.equal(component.research.status,'documented');assert.equal(component.research.hardwareValidated,false);assert.equal(component.pins[1].number,'2');assert.equal(component.pinSections[1].side,'right');
+  const draft=await service.component({...input,unresolved:[{field:'firmware',needed:'SDK revision not confirmed'}]});assert.equal(draft.research.status,'draft');
+  await assert.rejects(()=>service.component({...input,evidence:[]}),e=>e.code==='MISSING_EVIDENCE');
+  await assert.rejects(()=>service.component({...input,evidence:[{field:'identity',source_id:source.source_id,quote:'This sentence was never in the source.'}]}),e=>e.code==='EVIDENCE_MISMATCH');
+  await assert.rejects(()=>service.component({...input,component:{...input.component,pin_count:40}}),e=>e.code==='INCOMPLETE_PINOUT');
+  await assert.rejects(()=>service.component({...input,component:{...input.component,pins:input.component.pins.map(p=>({...p,number:'1'}))}}),e=>e.code==='DUPLICATE_PIN_NUMBER');
+  console.log('Passed: public-only URL/IP checks, mixed DNS rejection, search parsing/challenge reporting, script stripping, persisted project-scoped source evidence, complete physical contacts, duplicate labels, source mismatch rejection and draft status.');
+}finally{assert.ok(path.resolve(temp).startsWith(path.resolve(os.tmpdir())+path.sep));await fs.rm(temp,{recursive:true,force:true});}

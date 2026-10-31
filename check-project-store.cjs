@@ -11,7 +11,7 @@ const store=require('./project-store.cjs'),{createPartmapServer}=require('./prev
     project.nodes[0].pins=[{id:'power',name:'VCC',section:'main'}];
     saved=await store.saveWorkspace(config,{...body,expectedRevision:saved.revision});
     assert.equal(JSON.parse(await fs.readFile(path.join(directory,'wiring-context.json'),'utf8')).components[0].pins[0].id,'power');
-    assert.equal(await fs.readFile(path.join(directory,'missing-requirements.md'),'utf8'),project.requirementsDocument.markdown);assert.equal(await fs.readFile(path.join(directory,'ai-brief.md'),'utf8'),'# AI brief');
+    assert.equal(await fs.readFile(path.join(directory,'missing-requirements.md'),'utf8'),project.requirementsDocument.markdown);assert.equal(await fs.readFile(path.join(directory,'ai-brief.md'),'utf8'),'# AI brief');const libraryState=await store.readLibraryState(config,initial.id);assert.equal(libraryState.revision,saved.revision);assert.equal(libraryState.projectRevision,saved.projectRevision);
     const references=JSON.parse(await fs.readFile(path.join(directory,'references/index.json'),'utf8'));assert.equal(references.length,1);assert.equal(await fs.readFile(path.join(directory,references[0].path),'utf8'),'hello');
     await assert.rejects(()=>store.saveWorkspace(config,body),/changed on disk/);
     await store.saveExport(config,{workspaceId:initial.id,name:'report.md',base64:Buffer.from('report').toString('base64')});assert.equal(await fs.readFile(path.join(directory,'exports/report.md'),'utf8'),'report');

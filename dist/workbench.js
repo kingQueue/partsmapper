@@ -67,7 +67,7 @@ function bindLibraryCards(container,destination){
   container.querySelectorAll('[data-use-library]').forEach(b=>b.onclick=()=>destination(b.dataset.source,b.dataset.useLibrary));
 }
 function renderComponentLibrary(){
-  const list=allLibraryParts().filter(n=>`${n.name} ${n.model} ${n.interface}`.toLowerCase().includes(libraryQuery.toLowerCase()));
+  const list=allLibraryParts().filter(n=>`${n.name} ${n.model} ${n.interface} ${n.manufacturer||''} ${n.variant||''}`.toLowerCase().includes(libraryQuery.toLowerCase()));
   $('#libraryCards').innerHTML=list.map(n=>libraryCardHTML(n)).join('')||'<p class="muted">No matching components. Save a project part to reuse it.</p>';
   bindLibraryCards($('#libraryCards'),(_,id)=>addLibraryToMap(id));
 }

@@ -18,13 +18,13 @@ async function selected(config=DEFAULT_CONFIG){
   await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   return {directory,id:marker.id};
 }
-async function revision(workspace){const hash=crypto.createHash('sha256');for(const file of ['project.json','missing-requirements.md','component-library.json']){hash.update(file);hash.update(await optional(await safePath(workspace.directory,file))||'');}return hash.digest('hex');}
+async function revision(workspace,files=['project.json','missing-requirements.md','component-library.json']){const hash=crypto.createHash('sha256');for(const file of files){hash.update(file);hash.update(await optional(await safePath(workspace.directory,file))||'');}return hash.digest('hex');}
 async function readWorkspace(config=DEFAULT_CONFIG){
   const workspace=await selected(config);if(!workspace)return {directory:null};
   const project=await jsonFile(await safePath(workspace.directory,'project.json'));if(!project||!Array.isArray(project.nodes))throw problem('The selected project.json is missing or invalid. Restore a backup before saving.',409);
   const md=await optional(await safePath(workspace.directory,'missing-requirements.md'));
   if(md){const stat=await fs.stat(path.join(workspace.directory,'missing-requirements.md')),projectStat=await fs.stat(path.join(workspace.directory,'project.json')),text=md.toString('utf8');if(!project.requirementsDocument||project.requirementsDocument.markdown===text||stat.mtimeMs>=projectStat.mtimeMs)project.requirementsDocument={name:'missing-requirements.md',markdown:text,updatedAt:project.requirementsDocument?.markdown===text?project.requirementsDocument.updatedAt:stat.mtime.toISOString()};}
-  return {...workspace,revision:await revision(workspace),project,library:await jsonFile(await safePath(workspace.directory,'component-library.json'))};
+  return {...workspace,revision:await revision(workspace),projectRevision:await revision(workspace,['project.json','missing-requirements.md']),project,library:await jsonFile(await safePath(workspace.directory,'component-library.json'))};
 }
 const lastBackup=new Map();
 async function saveWorkspace(config,body){
@@ -46,7 +46,16 @@ async function saveWorkspace(config,body){
     const relative=`references/${folder}/${name}`;await atomic(workspace.directory,relative,Buffer.from(match[2],'base64'));references.push({componentId:n.id,component:n.name,name:a.name,path:relative,type:match[1]});
   }
   await atomic(workspace.directory,'references/index.json',JSON.stringify(references,null,2));
-  return {directory:workspace.directory,id:workspace.id,revision:await revision(workspace)};
+  return {directory:workspace.directory,id:workspace.id,revision:await revision(workspace),projectRevision:await revision(workspace,['project.json','missing-requirements.md'])};
+}
+async function readLibraryState(config,workspaceId){
+  const workspace=await selected(config);if(!workspace||workspace.id!==workspaceId)throw problem('Selected project changed. Reload before refreshing the library.',409);
+  const names=['project.json','missing-requirements.md','component-library.json'];
+  const first=await Promise.all(names.map(async name=>await optional(await safePath(workspace.directory,name))||Buffer.alloc(0)));
+  const second=await Promise.all(names.map(async name=>await optional(await safePath(workspace.directory,name))||Buffer.alloc(0)));
+  if(first.some((bytes,i)=>!bytes.equals(second[i])))throw problem('Files changed during library refresh. Try again after the write finishes.',409);
+  const digest=indices=>{const h=crypto.createHash('sha256');for(const i of indices){h.update(names[i]);h.update(first[i]);}return h.digest('hex');};
+  return {id:workspace.id,library:first[2].length?JSON.parse(first[2].toString('utf8').replace(/^\uFEFF/,'')):null,libraryRevision:crypto.createHash('sha256').update(first[2]).digest('hex'),projectRevision:digest([0,1]),revision:digest([0,1,2])};
 }
 async function saveExport(config,body){
   const workspace=await selected(config);if(!workspace||workspace.id!==body.workspaceId)throw problem('The selected project folder changed. Reload before exporting.',409);
@@ -72,5 +81,5 @@ async function selectProject(directory,{create=false,name,config=DEFAULT_CONFIG}
   await fs.mkdir(path.dirname(config),{recursive:true});const temp=config+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temp,JSON.stringify({directory},null,2));await fs.rename(temp,config);
   return {directory,id:marker.id};
 }
-module.exports={DEFAULT_CONFIG,selected,readWorkspace,saveWorkspace,saveExport,selectProject,leaf,safePath};
+module.exports={DEFAULT_CONFIG,readLibraryState,selected,readWorkspace,saveWorkspace,saveExport,selectProject,leaf,safePath};
 if(require.main===module){const [action,directory,...name]=process.argv.slice(2);(async()=>{if(action==='status')console.log(JSON.stringify(await selected()));else if(['create','open'].includes(action)&&directory)console.log(JSON.stringify(await selectProject(directory,{create:action==='create',name:name.join(' ')})));else throw Error('Usage: node project-store.cjs create|open <directory> [project name], or status');})().catch(e=>{console.error(e.message);process.exitCode=1;});}

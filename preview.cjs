@@ -28,6 +28,7 @@ const server = http.createServer(async (req, res) => {
       if(pathname==='/api/workspace'&&req.method==='GET')return reply(200,{...(await store.readWorkspace(config)),token});
       if(req.method!=='POST'||req.headers['x-partmap-token']!==token||!String(req.headers['content-type']).startsWith('application/json'))return reply(403,{error:'Invalid project request.'});
       const chunks=[];let size=0;for await (const chunk of req){size+=chunk.length;if(size>64*1024*1024)throw Object.assign(Error('Project request exceeds 64 MB.'),{status:413});chunks.push(chunk);}const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if(pathname==='/api/workspace/library')return reply(200,await store.readLibraryState(config,body.workspaceId));
       if(pathname==='/api/workspace/wiring-result')return reply(200,await autoWire.workspaceResult(config,body.workspaceId));
       if(pathname==='/api/workspace/auto-wire'){
         const w=await store.readWorkspace(config);if(!w.directory||w.id!==body.workspaceId)throw Error('Selected project changed.');

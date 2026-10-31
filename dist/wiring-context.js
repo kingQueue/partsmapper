@@ -10,7 +10,7 @@
       format:'partmap.wiring-context',version:1,sourceFile:'project.json',name:project.name,
       usage:'Derived read-only wiring view. Not a full project; never replace/import project.json with this file. Use stable component and pin IDs, not repeated pin labels. Connected agents: use parts_wiring_context to obtain current compact data and its source hash, then parts_connect to apply small edits without reading a full project. Missing specs remain unknown; parent relationships are assembly intent, not electrical connections.',
       components:inventory.filter(n=>ids.has(n.id)).map(n=>({
-        ...pick(n,['id','name','category','parent','quantity','model','voltage','interface','notes','firmware']),
+        ...pick(n,['id','name','category','parent','quantity','model','manufacturer','variant','specifications','voltage','interface','notes','firmware']),
         pinSections:(n.pinSections||[]).map(s=>({...s})),
         pins:(n.pins||[]).map(p=>({...p})),
         connections:(n.connections||[]).map(c=>({...c})),
