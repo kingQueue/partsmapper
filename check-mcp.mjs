@@ -19,7 +19,7 @@ const clients=[];
 async function connect(writable){const c=new Client({name:'integration-test',version:'1'}),t=new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('./mcp/server.mjs',import.meta.url)),'--project',project,'--log-dir',logs,...(writable?['--allow-writes']:[])],stderr:'pipe'});let stderr='';t.stderr?.on('data',b=>stderr+=b);try{await c.connect(t,{timeout:10000});}catch(e){throw Error(e.message+'\n'+stderr);}clients.push(c);return c;}
 async function call(c,name,args={}){const r=await c.callTool({name,arguments:args});assert.ok(r.content[0].text);const body=JSON.parse(r.content[0].text);assert.deepEqual(r.structuredContent,body);if(!body.ok)assert.equal(r.isError,true);return body;}
 try{
-  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,13);
+  const ro=await connect(false);const catalog=await ro.listTools();assert.equal(catalog.tools.length,14);
   assert.ok(catalog.tools.every(t=>t.inputSchema.additionalProperties===false));
   assert.equal((await call(ro,'partmap_status')).allowWrites,false);
   assert.equal((await call(ro,'partmap_self_test')).passed,true);

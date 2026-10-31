@@ -1,0 +1,13 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const els=new Map(),el=s=>{if(!els.has(s))els.set(s,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},innerHTML:'',textContent:''});return els.get(s);};
+const ctx={document:{querySelector:el,querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},structuredClone,crypto:require('crypto').webcrypto,console,setTimeout,clearTimeout,performance,TextEncoder,Blob};vm.createContext(ctx);
+for(const name of ['app','studio','hardware','clipboard','workbench','assembly','wiring-context','wiring-handoff','wiring-guard','auto-wire'])vm.runInContext(fs.readFileSync('dist/'+name+'.js','utf8').replace(/\n(?:render\(\)|initializeHardware\(\)|initializeComponentClipboard\(\)|initializeWorkbench\(\)|initializeAssembly\(\)|initializeWiringHandoff\(\));\s*$/,''),ctx);
+const run=s=>vm.runInContext(s,ctx);
+run(`project=validate({name:'Overlay fixture',nodes:['a','b'].map(id=>({id,name:id,category:'board',quantity:1,parent:null,pins:[{id:'p',name:'GND',section:'main'}],pinSections:[{id:'main',name:'Main',side:'left'}],connections:[],attachments:[]}))});
+let projectFolder={id:'fixture'};view='wiring';completedWiringWorkspaceId='fixture';completedWiring={routes:[{from:{component:'a',pin:'p'},to:{component:'b',pin:'p'},reason:'Fixture'}]};const before=JSON.stringify(project);`);
+assert.equal(run('wireRecords().length'),0,'file routes must not leak into source exports/briefs');
+assert.equal(run('drawingCompletedWiring=true;wireRecords().length'),1);
+assert.equal(run('JSON.stringify(project)'),run('before'));
+assert.equal(run("projectFolder={id:'other'};wireRecords().length"),0,'overlay must not cross project boundaries');
+assert.equal(run("projectFolder={id:'fixture'};completedWiring.routes[0].from.pin='missing';wireRecords().length"),0);
+console.log('Passed: file overlay is drawn only during rendering, cannot contaminate source wires/exports, preserves inventory, isolates projects and ignores stale endpoints.');

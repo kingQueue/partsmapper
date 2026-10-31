@@ -13,7 +13,7 @@ import {projectRelative} from './paths.mjs';
 const require=createRequire(import.meta.url),model=require('./model.cjs'),store=require('../project-store.cjs');
 const wiringContext=require('../dist/wiring-context.js'),wiringEdits=require('./wiring-edits.cjs');
 const appRoot=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const sessionId=crypto.randomUUID(),version='1.1.1',MAX_BYTES=16*1024*1024;
+const sessionId=crypto.randomUUID(),version='1.2.0',MAX_BYTES=16*1024*1024;
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const fail=(code,message,hint)=>Object.assign(Error(message),{code,hint});
@@ -123,6 +123,12 @@ tool('partmap_self_test','Verify project reading and validation. With write_test
 });
 const endpointSchema=z.object({component:z.string().min(1).max(200),pin:z.string().min(1).max(200)}).strict();
 const connectionSchema=z.object({from:endpointSchema,to:endpointSchema,reason:z.string().min(1).max(2000)}).strict();
+tool('partmap_request_auto_wiring','Request a local Character Room agent granted Auto wire listen to create complete-wiring.json. Never overwrites an existing result. Does not apply routes to project.json.',z.object({agent_id:z.string().min(1).max(100)}).strict(),async({agent_id})=>{
+  needWrite();const auto=require('../auto-wire.cjs'),current=await readProject();
+  const existing=await auto.readResult(root,current.project);if(existing.found)return {existing:true,result:existing};
+  const files=model.handoff(current.project),prompt=files.find(f=>f.name==='agent-prompt.md').text;
+  return auto.bridge('jobs',{agent_id,project_dir:root,prompt});
+},false);
 tool('partmap_wiring_context','Start a wiring job here. Return current compact wiring data and exact source hash without a full project read. Confirms source folder, component IDs, and whether the saved context file is stale. Next: connect, then validate; exports do not create wiring.',z.object({path:projectPath}).strict(),async({path:relative})=>{
   const current=await readProject(relative),context=wiringContext.build(current.project),contextPath=path.posix.join(path.posix.dirname(current.path),'wiring-context.json');
   const stored=await read(contextPath).catch(e=>{if(e.code==='FILE_NOT_FOUND')return null;throw e;});

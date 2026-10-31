@@ -122,3 +122,10 @@ The wiring tool preserves inventory, pins/headers, layout and unrelated metadata
 
 
 Wiring source selection: a saved handoff is a separate project snapshot, including nested `wiring-handoff` folders. `partmap_wiring_context` returns absolute `projectFile`, `openProjectDirectory`, `selectedUiDirectory`, `uiProjectMatches`, `wireCount`, `contextFileMatches`, and `existingRouteIssues`. A successful connect already refreshes derived context and returns the exact saved path/counts; an empty batch is not a refresh command. Open the returned folder in Projects or Reload folder if it is already selected. Route checks now recognize untyped GPIO/rail labels and reject motor-terminal/servo-header and encoder-output/PWM-controller conflicts. Existing problem routes are reported, never silently removed. These checks still do not prove voltage/current compatibility.
+
+
+## complete-wiring.json and automatic agent requests
+
+Partmap checks the selected project folder for complete-wiring.json every four seconds and overlays exact component/pin-ID routes in Wiring. Source boards and project.json wiring are preserved. Dashed lines are file routes; routes flagged by pin-function checks are red. Unknown IDs, malformed files, duplicate routes, blockers and review counts are reported; the input file is never rewritten. Changing project folders isolates overlays.
+
+Auto complete wiring checks for that exact file first. If present, it alerts and sends no agent request. If absent, it shows the supplied prompt and contacts Character Room via partmap_request_auto_wiring over MCP. An agent must have **Auto wire listen** granted in Character Room. One eligible listener starts automatically; multiple listeners require selecting one. The local connector is registered when Character Room starts with its Partmap MCP configuration. Pending jobs are de-duplicated and never overwrite a result. Job failures appear in Partmap and have diagnostic reports in Character Room. No new API keys or external model service is involved.
