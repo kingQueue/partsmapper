@@ -27,12 +27,8 @@ saveLibraryPart=function(n){const result=saveLibraryBeforeFolder(n);scheduleFold
 const downloadBlobBeforeFolder=downloadHandoffBlob;
 downloadHandoffBlob=function(blob,name){if(folderLoading||folderBlocked){toast('Project folder is not ready. Check the folder status before exporting.');return;}if(!projectFolder)return downloadBlobBeforeFolder(blob,name);return saveFolderExport(blob,name).catch(error=>{if(!folderBlocked)toast(error.message);});};
 downloadWorkbenchJSON=function(value,name){return downloadHandoffBlob(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}),name);};
-const downloadWiringBeforeFolder=downloadWiringHandoff;
-downloadWiringHandoff=function(files){if(folderLoading||folderBlocked){toast('Project folder is not ready. Check the folder status before exporting.');return;}if(!projectFolder)return downloadWiringBeforeFolder(files);return saveFolderExport(wiringHandoffZip(files),'partmap-wiring-handoff.zip',files).catch(error=>{if(!folderBlocked)toast(error.message);});};
-const openWiringBeforeFolder=openAutoWiringHandoff;
-openAutoWiringHandoff=function(){openWiringBeforeFolder();if(projectFolder&&$('#downloadWiringPackage')){$('#downloadWiringPackage').textContent='Save package to folder';$('.handoff-explanation').textContent='Saves the ZIP under exports/ and unpacked agent files under wiring-handoff/ in '+projectFolder.directory+'. This exports the task; it does not run an agent automatically.';}};
 const updateExportBeforeFolder=updateExport;
-updateExport=function(){updateExportBeforeFolder();if(projectFolder)$('#downloadBtn').textContent=exportMode==='json'?'Save JSON to folder':'Save brief to folder';};
+updateExport=function(){updateExportBeforeFolder();if(projectFolder)$('#downloadBtn').textContent=exportMode==='json'?'Save JSON to folder':'Save report to folder';};
 function importBrowserProjectToFolder(){
   if(!browserProjectBeforeFolder)return;
   const dialog=createModal('<div class="dialog-heading"><h2>Use browser project?</h2><button class="icon-button" data-dismiss>×</button></div><p>This replaces the selected folder’s active project with the browser project kept before the folder was opened. A disk backup is made before replacing changed data.</p><div class="dialog-actions"><button class="button" data-dismiss>Cancel</button><button id="useBrowserProject" class="button primary">Use browser project</button></div>');
@@ -40,9 +36,8 @@ function importBrowserProjectToFolder(){
 }
 async function initializeProjectFolder(){
   const banner=document.createElement('section');banner.id='projectFolderBanner';banner.innerHTML='<div><strong id="projectFolderPath">Connecting to local project folder…</strong><small id="folderSaveStatus">Browser data is kept as a backup.</small></div><button class="button" id="saveFolderNow">Save now</button><button class="button" id="reloadFolder">Reload folder</button><button class="button" id="importBrowserProject" hidden>Use browser project</button>';$('header').after(banner);
-  $('#autoCompleteWiring').onclick=()=>openAutoWiringHandoff();
   $('#saveFolderNow').onclick=()=>saveProjectFolder().catch(error=>toast(error.message));$('#reloadFolder').onclick=()=>location.reload();$('#importBrowserProject').onclick=importBrowserProjectToFolder;
-  $('#downloadBtn').onclick=()=>downloadHandoffBlob(new Blob([$('#exportPreview').textContent],{type:exportMode==='json'?'application/json':'text/markdown'}),project.name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+(exportMode==='json'?'-project.json':'-ai-brief.md'));
+  $('#downloadBtn').onclick=()=>downloadHandoffBlob(new Blob([$('#exportPreview').textContent],{type:exportMode==='json'?'application/json':'text/markdown'}),project.name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+(exportMode==='json'?'-project.json':'-parts-report.md'));
   document.addEventListener('click',event=>{
     const anchor=event.target.closest('a[download]');if(!projectFolder||!anchor)return;event.preventDefault();
     const name=anchor.getAttribute('download')||new URL(anchor.href,location.href).pathname.split('/').pop();fetch(anchor.href).then(r=>{if(!r.ok)throw Error('Could not read the reference file.');return r.blob();}).then(blob=>saveFolderExport(blob,name)).catch(error=>toast(error.message));

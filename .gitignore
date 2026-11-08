@@ -1,10 +1,15 @@
 node_modules/
 .env
 .env.*
-!.env.example
 *.log
 .DS_Store
 Thumbs.db
 .partmap-runtime/
 
-*.partmap-mcp-lock
+
+*.env
+*.pem
+*.key
+*.pfx
+__pycache__/
+projects/

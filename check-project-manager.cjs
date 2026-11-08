@@ -19,12 +19,12 @@ const store=require('./project-store.cjs'),manager=require('./project-manager.cj
     const other=path.join(temp,'Existing');await fs.mkdir(other);await fs.writeFile(path.join(other,'project.json'),JSON.stringify({name:'Existing project',nodes:[]}));
     const invalid=path.join(temp,'Invalid');await fs.mkdir(invalid);await fs.writeFile(path.join(invalid,'project.json'),JSON.stringify({name:'Invalid',nodes:[{id:'x',name:'Broken',category:'not-a-category'}]}));
     assert.equal((await request('/api/projects/activate',{...guard(),action:'open',directory:invalid})).status,400);assert.equal((await store.selected(config)).directory,current.directory);
-    const altered={...current.project,name:'External agent edit'};await fs.writeFile(path.join(current.directory,'project.json'),JSON.stringify(altered));
+    const altered={...current.project,name:'External edit'};await fs.writeFile(path.join(current.directory,'project.json'),JSON.stringify(altered));
     assert.equal((await request('/api/projects/activate',{...guard(),action:'open',directory:other})).status,409);
     assert.equal((await request('/api/projects/activate',{...guard(),keepRecovery:true,action:'open',directory:other})).status,200);
     assert.equal((await request('/api/projects/activate',{...guard(),keepRecovery:true,action:'open',directory:current.directory})).status,409);
     const recent=await request('/api/projects');assert.equal(recent.data.projects.length,2);assert.equal(recent.data.projects.filter(p=>p.current).length,1);
-    assert.equal(JSON.parse(await fs.readFile(path.join(current.directory,'project.json'),'utf8')).name,'External agent edit','Switching never overwrites the old project');
+    assert.equal(JSON.parse(await fs.readFile(path.join(current.directory,'project.json'),'utf8')).name,'External edit','Switching never overwrites the old project');
     await fs.writeFile(path.join(current.directory,'project.json'),'invalid JSON');assert.equal((await manager.list(config)).projects.find(p=>p.directory===current.directory).available,false);
     assert.equal((await request('/api/projects',null,{Origin:'https://untrusted.example'})).status,403);
     console.log('Passed: project management over real HTTP, blank local creation, validated open, recents/search data, existing-folder protection, folder browser routing, stale-tab/revision guards, explicit recovery switching, old-project preservation and local-origin/token checks.');

@@ -12,4 +12,6 @@ assert.equal(run('csvRows(\'name,notes\\n"A,B","two\\nlines"\')[1][0]'),'A,B');
 assert.ok(run('brief()').includes('Removed: Micro servo'));
 run('render();setView("electronics")');assert.ok(!el('#nodes').innerHTML.includes('Printed enclosure'));
 const p=run('exportObject()');assert.ok(p.changes.removed.length===1);assert.equal(run('validate(exportObject()).nodes.length'),7);
-console.log('Passed: tree validation, cycle/orphan rejection, baseline changes, firmware brief, quoted CSV, JSON round trip, electronics filtering, initial render.');
+console.log('Passed: tree validation, cycle/orphan rejection, baseline changes, parts report, quoted CSV, JSON round trip, electronics filtering, initial render.');
+
+const metadata=run('validate({...exportObject(),agentWork:{a:{}},sourcing:{}})');assert.equal(metadata.agentWork,undefined);assert.equal(metadata.sourcing,undefined);

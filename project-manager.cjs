@@ -1,5 +1,5 @@
 const fs=require('fs/promises'),path=require('path'),os=require('os');
-const store=require('./project-store.cjs'),model=require('./mcp/model.cjs');
+const store=require('./project-store.cjs'),model=require('./lib/project-model.cjs');
 const fail=(message,status=400)=>Object.assign(Error(message),{status});
 const home=path.join(os.homedir(),'Documents','Partmap Projects');
 const registryFile=config=>path.join(path.dirname(config),'recent-projects.json');
